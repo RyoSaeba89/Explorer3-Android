@@ -1,0 +1,6 @@
+/build/
+/libs/
+/obj/
+# Local session notes (not published)
+/MEMOIRE.md
+/upstream.json

@@ -1,0 +1,38 @@
+// Read-only view of the game's state for the Android input layer. Implemented
+// in bridge.inc, which tools/build.sh appends to the copy of main.cpp: in the
+// same translation unit, the game's internal variables are visible without
+// changing a line of the game. Game thread only.
+#pragma once
+#include <cstdint>
+
+namespace bridge {
+
+// What the current screen expects the player to type
+enum class Entry {
+    None,
+    Letter,  // one letter answers (Morse puzzles)
+    Quiz,    // one of A, B, C, D answers
+    Code,    // start-up code: letters, erase, confirm
+    Digits,  // coded keypad (multiplayer): 1 to 9, erase, confirm
+};
+
+Entry entry();
+
+// Changes whenever the game moves to another screen
+uint32_t screenId();
+
+// Wi-Fi list (multiplayer): never kept on Android (input.cpp)
+bool wifiList();
+
+// "Connect the screen" while no mission control is connected: the game
+// must not go on (user's request)
+bool waitingForControl();
+
+// Mode menu with "Multiplayer" selected: on Android, confirming first asks
+// which role this device plays (role_menu.h)
+bool multiplayerSelected();
+
+// Game language: 0 French, 1 English
+int language();
+
+}  // namespace bridge
