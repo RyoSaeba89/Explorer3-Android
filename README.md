@@ -4,6 +4,8 @@
 
 **EN** — The game [Escape Game Explorer 3](https://github.com/RyoSaeba89/Escape-Game-Cardputer) on the **Sony Ericsson Xperia Play** (Android 2.3) and the **OUYA** (Android 4.1), in **a single APK**, fully playable with the gamepad: **Solo** mode, and **Multiplayer** where the device is either the **Crew** (it plays, a web browser is mission control) or **Mission control** (it is the screen, facing a Cardputer or another Android device).
 
+> **Version 2.0.0 (2026-10-12)** — pour le jeu v3.0.0 : le code de démarrage change à chaque partie ; au QCM, le clavier à l'écran propose les 4 lettres de la partie ; en centre de contrôle, les labyrinthes s'affichent avec leurs images. / for game v3.0.0: the start-up code changes with each game; at the quiz, the on-screen keyboard offers the game's 4 letters; as mission control, mazes show their pictures.
+>
 > **Version 1.0 (2026-10-10)** — pour le jeu v2.2.2. Essayée sur le Xperia Play (Solo, Équipage avec un navigateur, Centre de contrôle face à un Cardputer) ; **pas encore sur l'OUYA**. / for game v2.2.2. Tried on the Xperia Play (Solo, Crew with a browser, Mission control facing a Cardputer); **not yet on the OUYA**.
 
 ## Mode d'emploi / How to use
@@ -46,9 +48,9 @@
 | Documentation technique (français) | [docs/TECHNIQUE.md](docs/TECHNIQUE.md) |
 | Technical documentation (English) | [docs/TECHNICAL.md](docs/TECHNICAL.md) |
 
-**FR** — Pour compiler : ce dépôt à côté de [Escape-Game-Cardputer](https://github.com/RyoSaeba89/Escape-Game-Cardputer) (v2.2.2, après `pio run -e simulateur`) et de [GC-Explorer3](https://github.com/RyoSaeba89/GC-Explorer3) (v1.1), le NDK r15c et le SDK Android ; voir la documentation technique.
+**FR** — Pour compiler : ce dépôt à côté de [Escape-Game-Cardputer](https://github.com/RyoSaeba89/Escape-Game-Cardputer) (v3.0.0, après `pio run -e simulateur`) et de [GC-Explorer3](https://github.com/RyoSaeba89/GC-Explorer3) (v2.0.0), le NDK r15c et le SDK Android ; voir la documentation technique.
 
-**EN** — To build: this repository next to [Escape-Game-Cardputer](https://github.com/RyoSaeba89/Escape-Game-Cardputer) (v2.2.2, after `pio run -e simulateur`) and [GC-Explorer3](https://github.com/RyoSaeba89/GC-Explorer3) (v1.1), NDK r15c and the Android SDK; see the technical documentation.
+**EN** — To build: this repository next to [Escape-Game-Cardputer](https://github.com/RyoSaeba89/Escape-Game-Cardputer) (v3.0.0, after `pio run -e simulateur`) and [GC-Explorer3](https://github.com/RyoSaeba89/GC-Explorer3) (v2.0.0), NDK r15c and the Android SDK; see the technical documentation.
 
 ```sh
 tools/build.sh          # build/explorer3.apk

@@ -90,6 +90,8 @@ std::string bannerText;
 int bannerY = 0;
 int bannerH = 0;
 bool bannerDirty = false;
+std::string mazeText;  // maze theme ("M"), empty: the planets
+bool mazeDirty = false;
 uint8_t pageLang = 0;
 bool langDirty = false;
 std::string symbolsJs = "const SYM=[];";
@@ -239,11 +241,11 @@ std::string header(const std::string &req, const char *name) {
     return v;
 }
 
-// A new browser: the whole screen, its page, its language and the banner
+// A new browser: the whole screen, its page, its language, the maze theme and the banner
 void welcome() {
     memset(rowHash, 0, sizeof rowHash);
     std::lock_guard<std::mutex> g(stateLock);
-    panelDirty = langDirty = bannerDirty = true;
+    panelDirty = langDirty = bannerDirty = mazeDirty = true;
 }
 
 bool handshake(Client &c) {
@@ -392,8 +394,8 @@ void sendScreen() {
 // Pages, language, banner and sounds set by the game
 void sendState(uint32_t now) {
     std::deque<std::string> sounds;
-    std::string panel, banner;
-    bool sendPanel, sendLang, sendBanner;
+    std::string panel, banner, maze;
+    bool sendPanel, sendLang, sendBanner, sendMaze;
     int by, bh;
     uint8_t lang;
     {
@@ -402,8 +404,10 @@ void sendState(uint32_t now) {
         sendPanel = panelDirty;
         sendLang = langDirty;
         sendBanner = bannerDirty;
-        panelDirty = langDirty = bannerDirty = false;
+        sendMaze = mazeDirty;
+        panelDirty = langDirty = bannerDirty = mazeDirty = false;
         panel = panelText;
+        maze = mazeText;
         banner = bannerText;
         by = bannerY;
         bh = bannerH;
@@ -415,6 +419,9 @@ void sendState(uint32_t now) {
     }
     if (sendLang) {
         broadcastText("L," + t + "," + (lang ? "en" : "fr"));
+    }
+    if (sendMaze) {  // before the page, which then shows the right theme at once
+        broadcastText("M," + t + (maze.empty() ? "" : "," + maze));
     }
     if (sendPanel) {
         broadcastText("K," + t + "," + panel);
@@ -608,6 +615,12 @@ void setBanner(const String &text, int y, int h) {
     bannerY = y;
     bannerH = h;
     bannerDirty = true;
+}
+
+void setMazeTheme(const String &text) {
+    std::lock_guard<std::mutex> g(stateLock);
+    mazeText = text.c_str();
+    mazeDirty = true;
 }
 
 void setLanguage(uint8_t lang) {

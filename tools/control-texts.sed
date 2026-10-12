@@ -5,5 +5,5 @@
 s/"Connexion au Cardputer…", "Connecting to the Cardputer…"/"Connexion à l'équipage…", "Connecting to the crew…"/
 s/"Le chrono démarre quand l'équipage appuie sur ENTRÉE\.",/"Le chrono démarre quand l'équipage lance la partie.",/
 s/"The countdown starts when the crew presses ENTER\."/"The countdown starts when the crew starts the game."/
-s/"Jeu d'une autre version : mettre le Cardputer en v2\.2\.2\.",/"Jeu d'une autre version : mettre le jeu de l'équipage en v2.2.2.",/
-s/"Game from another version: update the Cardputer to v2\.2\.2\."/"Game from another version: update the crew's game to v2.2.2."/
+s/"Jeu d'une autre version : mettre le Cardputer en v3\.0\.0\.",/"Jeu d'une autre version : mettre le jeu de l'équipage en v3.0.0.",/
+s/"Game from another version: update the Cardputer to v3\.0\.0\."/"Game from another version: update the crew's game to v3.0.0."/

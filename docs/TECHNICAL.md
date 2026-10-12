@@ -20,7 +20,7 @@
 
 ## 1. Goal and status
 
-A single APK for the Sony Ericsson **Xperia Play** (Android 2.3, API 10) and the **OUYA** (Android 4.1, API 16), played with the gamepad. The game is the Cardputer's ([Escape-Game-Cardputer](https://github.com/RyoSaeba89/Escape-Game-Cardputer) v2.2.2): `src/main.cpp` is **compiled for Android**, as its PC simulator already does. Mission control reuses the pure code of [GC-Explorer3](https://github.com/RyoSaeba89/GC-Explorer3) v1.1. Neither project is modified: both are read from their folders, and what changes for Android is applied to copies at build time.
+A single APK for the Sony Ericsson **Xperia Play** (Android 2.3, API 10) and the **OUYA** (Android 4.1, API 16), played with the gamepad. The game is the Cardputer's ([Escape-Game-Cardputer](https://github.com/RyoSaeba89/Escape-Game-Cardputer) v3.0.0): `src/main.cpp` is **compiled for Android**, as its PC simulator already does. Mission control reuses the pure code of [GC-Explorer3](https://github.com/RyoSaeba89/GC-Explorer3) v2.0.0. Android modifies neither project: both are read from their folders, and what changes for Android is applied to copies at build time.
 
 **Version 1.0**: Solo, Multiplayer as the Crew and as Mission control. Tried on the Xperia Play (section 12); not yet on the OUYA.
 
@@ -31,7 +31,7 @@ Made by the user on 2026-10-10. Not to be reopened without a new reason.
 | Topic | Decision |
 |---|---|
 | Roles | Crew (the game runs on the device) and Mission control (the device is the screen) in the same APK, plus **Solo** mode. The role is chosen after "Multiplayer" in the game's menu. |
-| Cardputer | Firmware unchanged: protocol v2.2.2 as is. |
+| Cardputer | No firmware change for Android: protocol v3.0.0 as is. |
 | Network | No tethering: the device uses Android's Wi-Fi settings (or the OUYA's Ethernet); the game never searches, joins or creates a network. Mission control: automatic search for the crew, typed address as a fallback; home router or the Cardputer's Explorer3 network. |
 | Crew ports | **8080** (page) and **8081** (stream): Android forbids 80 and 81 without root. The GameCube only works with a real Cardputer. |
 | Technique | Cardputer game compiled natively (NDK r15c); Android side in Java; built by a script calling the SDK tools, no Gradle. |
@@ -47,7 +47,7 @@ Made by the user on 2026-10-10. Not to be reopened without a new reason.
 
 Next to this repository:
 
-- **Escape-Game-Cardputer** v2.2.2 (`GAME_DIR=`, else `../Escape-Game-Cardputer`), with its simulator's M5GFX library, downloaded by `pio run -e simulateur` (`.pio/libdeps/simulateur/M5GFX`, version 0.2.32);
+- **Escape-Game-Cardputer** v3.0.0 (`GAME_DIR=`, else `../Escape-Game-Cardputer`), with its simulator's M5GFX library, downloaded by `pio run -e simulateur` (`.pio/libdeps/simulateur/M5GFX`, version 0.2.32);
 - **GC-Explorer3** v1.1 (`GC_DIR=`, else `../GC-Explorer3`), with its font `extern/font/console_font_8x16.c`;
 
 and:
@@ -63,7 +63,7 @@ tools/build.sh --x86    # adds x86 for the PC emulator
 
 Script steps:
 
-1. **Game copies**, one per device (`$NDK_OUT/game-xperia`, `game-ouya`): `main.cpp` with `tools/android-game.sed`, then `jni/bridge.inc` appended; `textes.h` with `tools/android-texts.sed`, then the device's buttons; `diffusion.h` without `explorer3.local`; `page.inc`, mission control's page extracted from `diffusion.cpp` with `tools/android-page.sed`. The script **stops** if a displayed text still contains "Cardputer", a Cardputer key name or a placeholder, or if a change no longer applies (new game version).
+1. **Game copies**, one per device (`$NDK_OUT/game-xperia`, `game-ouya`): `main.cpp` with `tools/android-game.sed`, then `jni/bridge.inc` appended; `textes.h` with `tools/android-texts.sed`, then the device's buttons; `mots.h` (start-up codes and the data of their puzzles) and `dessins.h` (pictures of the maze cells) as they are; `diffusion.h` without `explorer3.local`; `page.inc`, mission control's page extracted from `diffusion.cpp` with `tools/android-page.sed`. The script **stops** if a displayed text still contains "Cardputer", a Cardputer key name or a placeholder, or if a change no longer applies (new game version).
 2. **Mission control texts**: copy of `GC-Explorer3/source/texts.c` with `tools/control-texts.sed` (`$NDK_OUT/control`).
 3. **`ndk-build`**: three libraries, `libexplorer3_xperia.so`, `libexplorer3_ouya.so` (the game, each with its buttons) and `libexplorer3_control.so` (mission control). Output in a short folder (`NDK_OUT`, `~/Android/o` by default) because Windows limits path length.
 4. `aapt2`, `javac` then `d8 --min-api 10`, `classes.dex` and `lib/` added, `zipalign`.
@@ -143,7 +143,7 @@ Xperia Play keys read from the device's `/system/usr/keylayout/keypad-zeus.kl` a
 **On-screen keyboard** (`onscreen_keyboard.cpp`), drawn with M5GFX and the game's font, according to what the screen expects:
 
 - Morse puzzles: A–Z and ←, at the bottom; opened by triangle; a letter answers and closes it;
-- quiz: A B C D and ←, over the footer only;
+- quiz: the 4 answer letters, drawn by the game for each game (`bridge::quizLetter()`), and ←, over the footer only;
 - start-up code: A–Z, ← (erase) and OK, **at the top**, opened by itself (the code boxes stay visible);
 - coded keypad (multiplayer): 1–9, ← and OK, over the footer, opened by itself.
 
@@ -166,13 +166,13 @@ Java gives the game Android's network (`Network.java`: Wi-Fi first, with its nam
 `jni/mirror_android.cpp` is `diffusion.cpp`'s server in POSIX sockets, on one thread:
 
 - `http://<address>:8080/`: the page (`page.inc`) and `/sym.js`;
-- `ws://<address>:8081/`: WebSocket handshake, compressed screen rows (25 pictures/s at most, only changed rows, the whole screen on each new connection except the banner), messages `P` (clock, 250 ms), `T` `S` `R` (sound), `K` (pages), `L` (language), `B` (banner); ping every 5 s, disconnection after 2 unanswered; 5 browsers at most.
+- `ws://<address>:8081/`: WebSocket handshake, compressed screen rows (25 pictures/s at most, only changed rows, the whole screen on each new connection except the banner), messages `P` (clock, 250 ms), `T` `S` `R` (sound), `K` (pages), `L` (language), `B` (banner), `M` (maze theme, before the page and on each connection); ping every 5 s, disconnection after 2 unanswered; 5 browsers at most.
 
 The address screen shows `address:8080` (text and QR code). The game cannot go on while no mission control is connected.
 
 ## 10. Multiplayer: Mission control
 
-`libexplorer3_control.so` = GC-Explorer3 v1.1's pure code (WebSocket protocol, session, clock, picture rows, pages, banner, sound, address entry), compiled unchanged, + `jni/control/`:
+`libexplorer3_control.so` = GC-Explorer3's pure code (WebSocket protocol, session, clock, picture rows, pages, banner, maze theme, sound, address entry), compiled as is from its folder, + `jni/control/`:
 
 - **Search** (`net.c`, on its own thread): the 254 addresses of the device's /24, ports **81** (Cardputer) and **8081** (Android crew), in batches of 96 connections of 1.5 s; each open port is confirmed by `GET /sym.js` on 80 or 8080, with `Host` = the address (on its Explorer3 network the Cardputer redirects any other name to its page). One crew found: connects at once; several: list; none: search again or type the address (triangle).
 - **Address entry**: GC-Explorer3's (D-pad, L / R ±10), checked on both ports before connecting.

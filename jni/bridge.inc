@@ -27,6 +27,10 @@ Entry entry() {
     return Entry::None;
 }
 
+char quizLetter(int i) {
+    return quizLabel[i];
+}
+
 bool wifiList() {
     return state == St::WifiList;
 }

@@ -2,7 +2,7 @@
 // scaled and sharpened the same way. Rows of 18-unit cells; the arrow key
 // erases (code) or closes (answers).
 //   Letter  A..M / N..Z / [<-]            along the bottom
-//   Quiz    A B C D [<-]                  one row along the bottom, over the footer only
+//   Quiz    the 4 answer letters [<-]     one row along the bottom, over the footer only
 //   Code    A..M / N..Z / [<-] [OK]       along the top: the code boxes stay visible
 //   Digits  1..9 [<-] [OK]                one row along the bottom, over the footer only
 #include "onscreen_keyboard.h"
@@ -50,7 +50,7 @@ void build(bridge::Entry m) {
             break;
         case bridge::Entry::Quiz:
             for (int i = 0; i < 4; i++) {
-                keys.push_back({'A' + i, 0, 2 + i * 2, 2});
+                keys.push_back({bridge::quizLetter(i), 0, 2 + i * 2, 2});
             }
             keys.push_back({ERASE, 0, 10, 2});
             rows = 1;

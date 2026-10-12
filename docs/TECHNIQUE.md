@@ -20,7 +20,7 @@
 
 ## 1. But et état
 
-Une seule APK pour le Sony Ericsson **Xperia Play** (Android 2.3, API 10) et l'**OUYA** (Android 4.1, API 16), jouable à la manette. Le jeu est celui du Cardputer ([Escape-Game-Cardputer](https://github.com/RyoSaeba89/Escape-Game-Cardputer) v2.2.2) : `src/main.cpp` est **compilé pour Android**, comme le fait déjà son simulateur PC. Le Centre de contrôle reprend le code pur de [GC-Explorer3](https://github.com/RyoSaeba89/GC-Explorer3) v1.1. Aucun de ces deux projets n'est modifié : ils sont lus depuis leur dossier, et ce qui change pour Android est appliqué à des copies, au moment de la compilation.
+Une seule APK pour le Sony Ericsson **Xperia Play** (Android 2.3, API 10) et l'**OUYA** (Android 4.1, API 16), jouable à la manette. Le jeu est celui du Cardputer ([Escape-Game-Cardputer](https://github.com/RyoSaeba89/Escape-Game-Cardputer) v3.0.0) : `src/main.cpp` est **compilé pour Android**, comme le fait déjà son simulateur PC. Le Centre de contrôle reprend le code pur de [GC-Explorer3](https://github.com/RyoSaeba89/GC-Explorer3) v2.0.0. Android ne modifie aucun de ces deux projets : ils sont lus depuis leur dossier, et ce qui change pour Android est appliqué à des copies, au moment de la compilation.
 
 **Version 1.0** : Solo, Multijoueur en Équipage et en Centre de contrôle. Essayée sur le Xperia Play (section 12) ; pas encore sur l'OUYA.
 
@@ -31,7 +31,7 @@ Prises par l'utilisateur le 2026-10-10. Elles ne sont pas à rediscuter sans rai
 | Sujet | Décision |
 |---|---|
 | Rôles | Équipage (le jeu tourne sur l'appareil) et Centre de contrôle (l'appareil sert d'écran) dans la même APK, plus le mode **Solo**. Le rôle se choisit après « Multijoueur » dans le menu du jeu. |
-| Cardputer | Firmware non modifié : protocole v2.2.2 tel quel. |
+| Cardputer | Aucune modification du firmware pour Android : protocole v3.0.0 tel quel. |
 | Réseau | Pas de partage de connexion : l'appareil passe par les réglages Wi-Fi d'Android (ou l'Ethernet de l'OUYA) ; le jeu ne cherche, ne rejoint ni ne crée aucun réseau. Centre de contrôle : recherche automatique de l'équipage, saisie de l'adresse en secours ; réseau de la box ou réseau Explorer3 du Cardputer. |
 | Ports de l'Équipage | **8080** (page) et **8081** (flux) : Android interdit 80 et 81 sans root. La GameCube ne marche qu'avec un vrai Cardputer. |
 | Technique | Jeu du Cardputer compilé en natif (NDK r15c) ; partie Android en Java ; compilation par un script qui appelle les outils du SDK, sans Gradle. |
@@ -47,7 +47,7 @@ Prises par l'utilisateur le 2026-10-10. Elles ne sont pas à rediscuter sans rai
 
 Il faut, à côté de ce dépôt :
 
-- **Escape-Game-Cardputer** v2.2.2 (`GAME_DIR=` sinon `../Escape-Game-Cardputer`), avec la bibliothèque M5GFX de son simulateur, téléchargée par `pio run -e simulateur` (`.pio/libdeps/simulateur/M5GFX`, version 0.2.32) ;
+- **Escape-Game-Cardputer** v3.0.0 (`GAME_DIR=` sinon `../Escape-Game-Cardputer`), avec la bibliothèque M5GFX de son simulateur, téléchargée par `pio run -e simulateur` (`.pio/libdeps/simulateur/M5GFX`, version 0.2.32) ;
 - **GC-Explorer3** v1.1 (`GC_DIR=` sinon `../GC-Explorer3`), avec sa police `extern/font/console_font_8x16.c` ;
 
 et :
@@ -63,7 +63,7 @@ tools/build.sh --x86    # ajoute x86 pour l'émulateur du PC
 
 Étapes du script :
 
-1. **Copies du jeu**, une par appareil (`$NDK_OUT/game-xperia`, `game-ouya`) : `main.cpp` avec `tools/android-game.sed` puis `jni/bridge.inc` ajouté à la fin ; `textes.h` avec `tools/android-texts.sed` puis les boutons de l'appareil ; `diffusion.h` sans `explorer3.local` ; `page.inc`, la page du centre de contrôle extraite de `diffusion.cpp` avec `tools/android-page.sed`. Le script **s'arrête** si un texte affiché contient encore « Cardputer », un nom de touche du Cardputer ou un repère, ou si une modification ne s'applique plus (nouvelle version du jeu).
+1. **Copies du jeu**, une par appareil (`$NDK_OUT/game-xperia`, `game-ouya`) : `main.cpp` avec `tools/android-game.sed` puis `jni/bridge.inc` ajouté à la fin ; `textes.h` avec `tools/android-texts.sed` puis les boutons de l'appareil ; `mots.h` (codes de démarrage et données de leurs énigmes) et `dessins.h` (dessins des cases des labyrinthes) tels quels ; `diffusion.h` sans `explorer3.local` ; `page.inc`, la page du centre de contrôle extraite de `diffusion.cpp` avec `tools/android-page.sed`. Le script **s'arrête** si un texte affiché contient encore « Cardputer », un nom de touche du Cardputer ou un repère, ou si une modification ne s'applique plus (nouvelle version du jeu).
 2. **Textes du Centre de contrôle** : copie de `GC-Explorer3/source/texts.c` avec `tools/control-texts.sed` (`$NDK_OUT/control`).
 3. **`ndk-build`** : trois bibliothèques, `libexplorer3_xperia.so`, `libexplorer3_ouya.so` (le jeu, chacun avec ses boutons) et `libexplorer3_control.so` (le Centre de contrôle). Sortie dans un dossier court (`NDK_OUT`, `~/Android/o` par défaut), car Windows limite la longueur des chemins.
 4. `aapt2`, `javac` puis `d8 --min-api 10`, ajout de `classes.dex` et `lib/`, `zipalign`.
@@ -143,7 +143,7 @@ Touches du Xperia Play relevées dans `/system/usr/keylayout/keypad-zeus.kl` et 
 **Clavier à l'écran** (`onscreen_keyboard.cpp`), dessiné avec M5GFX et la police du jeu, selon ce que l'écran attend :
 
 - énigmes de Morse : A–Z et ←, en bas ; ouvert par △ ; une lettre répond et le ferme ;
-- QCM : A B C D et ←, sur le pied de page seulement ;
+- QCM : les 4 lettres des réponses, tirées par le jeu à chaque partie (`bridge::quizLetter()`), et ←, sur le pied de page seulement ;
 - code de démarrage : A–Z, ← (effacer) et OK, **en haut**, ouvert tout seul (les cases du code restent visibles) ;
 - clavier codé (multijoueur) : 1–9, ← et OK, sur le pied de page, ouvert tout seul.
 
@@ -166,13 +166,13 @@ Java donne au jeu le réseau d'Android (`Network.java` : Wi-Fi d'abord, avec son
 `jni/mirror_android.cpp` est le serveur de `diffusion.cpp` en sockets POSIX, sur un fil :
 
 - `http://<adresse>:8080/` : la page (`page.inc`) et `/sym.js` ;
-- `ws://<adresse>:8081/` : poignée de main WebSocket, lignes de l'écran compressées (25 images/s au plus, seulement les lignes changées, tout l'écran à chaque nouvelle connexion, sauf le bandeau), messages `P` (horloge, 250 ms), `T` `S` `R` (son), `K` (pages), `L` (langue), `B` (bandeau) ; ping toutes les 5 s, déconnexion après 2 sans réponse ; 5 navigateurs au plus.
+- `ws://<adresse>:8081/` : poignée de main WebSocket, lignes de l'écran compressées (25 images/s au plus, seulement les lignes changées, tout l'écran à chaque nouvelle connexion, sauf le bandeau), messages `P` (horloge, 250 ms), `T` `S` `R` (son), `K` (pages), `L` (langue), `B` (bandeau), `M` (thème du labyrinthe, avant la page et à chaque connexion) ; ping toutes les 5 s, déconnexion après 2 sans réponse ; 5 navigateurs au plus.
 
 L'écran d'adresse affiche `adresse:8080` (texte et QR code). On ne peut pas continuer tant qu'aucun centre de contrôle n'est connecté.
 
 ## 10. Multijoueur : le Centre de contrôle
 
-`libexplorer3_control.so` = le code pur de GC-Explorer3 v1.1 (protocole WebSocket, session, horloge, lignes d'image, pages, bandeau, son, saisie d'adresse), compilé sans changement, + `jni/control/` :
+`libexplorer3_control.so` = le code pur de GC-Explorer3 (protocole WebSocket, session, horloge, lignes d'image, pages, bandeau, thème du labyrinthe, son, saisie d'adresse), compilé tel quel depuis son dossier, + `jni/control/` :
 
 - **Recherche** (`net.c`, sur un fil) : les 254 adresses du /24 de l'appareil, ports **81** (Cardputer) et **8081** (Équipage Android), par paquets de 96 connexions de 1,5 s ; chaque port ouvert est confirmé par `GET /sym.js` sur 80 ou 8080, avec `Host` = l'adresse (le Cardputer renvoie tout autre nom vers sa page sur son réseau Explorer3). Un équipage trouvé : connexion directe ; plusieurs : liste ; aucun : chercher encore ou taper l'adresse (△).
 - **Saisie de l'adresse** : celle de GC-Explorer3 (croix, L / R ±10), vérifiée sur les deux ports avant la connexion.

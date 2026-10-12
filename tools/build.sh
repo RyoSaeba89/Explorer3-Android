@@ -44,6 +44,9 @@ copy_game() {  # copy_game <folder> <sed buttons>
     sed -f "$HERE/tools/android-game.sed" "$GAME/src/main.cpp" | cat - "$HERE/jni/bridge.inc" > "$dst/main.cpp.new"
     grep -q 'clientCount() > 0) hint(tr(ADDR_CONTINUE)' "$dst/main.cpp.new"         || { echo "tools/android-game.sed no longer applies to main.cpp"; exit 1; }
     sed -f "$HERE/tools/android-texts.sed" "$GAME/src/textes.h" | sed "$2" > "$dst/textes.h.new"
+    # Start-up codes and maze pictures (game data, no button names)
+    cp "$GAME/src/mots.h" "$dst/mots.h.new"
+    cp "$GAME/src/dessins.h" "$dst/dessins.h.new"
     # No explorer3.local on Android (no name announced on the network)
     sed 's/HOST_NAME = "explorer3.local"/HOST_NAME = ""/' "$GAME/src/diffusion.h" > "$dst/diffusion.h.new"
     awk '/const char PAGE\[\] PROGMEM = R"rawliteral\(/{f=1} f{print} /\)rawliteral";/{f=0}' "$GAME/src/diffusion.cpp"         | sed -f "$HERE/tools/android-page.sed" | sed "$2" > "$dst/page.inc.new"
@@ -53,12 +56,12 @@ copy_game() {  # copy_game <folder> <sed buttons>
     fi
     # No displayed text may contain "Cardputer" or a Cardputer key name, nor a
     # placeholder left over (comments may)
-    texts=$(sed 's#//.*##' "$dst/textes.h.new" "$dst/main.cpp.new" | grep '"' || true)
+    texts=$(sed 's#//.*##' "$dst/textes.h.new" "$dst/main.cpp.new" "$dst/mots.h.new" | grep '"' || true)
     if echo "$texts" | grep -i 'cardputer' || echo "$texts" | grep -E 'ENTRÉE|ENTER|ESC|ESPACE|SPACE|TAB|DEL|Fn Fn|@[A-Z]+@'; then
         echo "text to adapt for Android: extend tools/android-texts.sed"
         exit 1
     fi
-    for f in main.cpp textes.h diffusion.h page.inc; do  # unchanged files keep their date: no rebuild
+    for f in main.cpp textes.h mots.h dessins.h diffusion.h page.inc; do  # unchanged files keep their date: no rebuild
         if cmp -s "$dst/$f.new" "$dst/$f"; then rm "$dst/$f.new"; else mv "$dst/$f.new" "$dst/$f"; fi
     done
 }

@@ -11,12 +11,15 @@ namespace bridge {
 enum class Entry {
     None,
     Letter,  // one letter answers (Morse puzzles)
-    Quiz,    // one of A, B, C, D answers
+    Quiz,    // one of the 4 letters shown answers (quizLetter)
     Code,    // start-up code: letters, erase, confirm
     Digits,  // coded keypad (multiplayer): 1 to 9, erase, confirm
 };
 
 Entry entry();
+
+// Letter of the quiz answer i (0 to 3), drawn by the game for each game
+char quizLetter(int i);
 
 // Changes whenever the game moves to another screen
 uint32_t screenId();
