@@ -1,5 +1,5 @@
-/* Mission control on Android: OpenGL ES 2 implementation of GC-Explorer3's
- * draw.h (filled rectangles, 8x16 font, clipping) plus the copy of the
+/* Mission control on Android: OpenGL ES 2 implementation of draw.h (filled
+ * rectangles, 8x16 font, clipping) plus the copy of the
  * crew's screen. The 960 x 540 canvas is scaled to fit the screen, aspect
  * kept (user's choice: scale to fit, sharp at any resolution). GL thread
  * only. */
@@ -21,5 +21,9 @@ void gl_screen(const uint16_t *pixels, bool changed);
 
 /* Finish the frame. */
 void gl_end(void);
+
+/* Touch: the point (sx, sy) of the surface, in pixels from its top left, on
+ * the canvas of the last frame; false outside the canvas. */
+bool gl_canvas_point(float sx, float sy, float *cx, float *cy);
 
 #endif

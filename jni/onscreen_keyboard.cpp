@@ -162,6 +162,28 @@ int selected() {
     return isOpen() ? keys[cursor].code : OK;
 }
 
+bool covers(int x, int y) {
+    return isOpen() && y >= panelTop() && y < panelTop() + panelHeight();
+}
+
+bool selectAt(int x, int y) {
+    if (!covers(x, y)) {
+        return false;
+    }
+    int top = panelTop() + (current == bridge::Entry::Code ? 0 : 2);  // as draw()
+    for (size_t i = 0; i < keys.size(); i++) {
+        const Key &k = keys[i];
+        int kx = LEFT + k.col * CELL_W;
+        int ky = top + k.row * CELL_H;
+        if (x >= kx && x < kx + k.span * CELL_W && y >= ky && y < ky + CELL_H) {
+            cursor = (int)i;
+            wantedCol = k.col;
+            return true;
+        }
+    }
+    return false;
+}
+
 void draw(uint16_t *picture) {
     if (!isOpen()) {
         return;
@@ -188,7 +210,11 @@ void draw(uint16_t *picture) {
         int y = top + k.row * CELL_H;
         int w = k.span * CELL_W - 2;
         int kh = CELL_H - 2;
+#if defined(EXPLORER3_TOUCH)
+        bool sel = false;  // no gamepad: no cursor, the keys are touched
+#else
         bool sel = (int)i == cursor;
+#endif
         uint16_t ink = sel ? back : text;
         if (sel) {
             sprite.fillRect(x, y, w, kh, yellow);

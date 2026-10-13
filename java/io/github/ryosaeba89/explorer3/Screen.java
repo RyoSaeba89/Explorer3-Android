@@ -48,6 +48,7 @@ final class Screen implements GLSurfaceView.Renderer {
     static final int MSG_OPEN_CONTROL = 1;
 
     private final Handler activity;
+    private final TouchButtons buttons;  // null with a gamepad
     private final ByteBuffer pixels =
             ByteBuffer.allocateDirect(Game.W * Game.H * 2).order(ByteOrder.nativeOrder());
     private final FloatBuffer positions = floats(POSITIONS);
@@ -61,15 +62,31 @@ final class Screen implements GLSurfaceView.Renderer {
     private int k = 1;
     private boolean twoSteps;     // false if the driver refuses the enlarged texture
     private int vx, vy, vw, vh;   // where the picture goes on the screen
+    private int top;              // its top, from the top of the screen (vy is from the bottom)
     private int seen = -1;        // number of the last picture received
     private boolean enlarge;      // new picture to enlarge
 
-    Screen(Handler activity) {
+    Screen(Handler activity, TouchButtons buttons) {
         this.activity = activity;
+        this.buttons = buttons;
+    }
+
+    /**
+     * UI thread: the point of the game's picture (W x H) under (x, y) of the
+     * screen, or null outside the picture.
+     */
+    synchronized int[] toGame(float x, float y) {
+        if (vw == 0 || x < vx || x >= vx + vw || y < top || y >= top + vh) {
+            return null;
+        }
+        return new int[] {(int) ((x - vx) * Game.W / vw), (int) ((y - top) * Game.H / vh)};
     }
 
     @Override
     public void onSurfaceCreated(GL10 unused, EGLConfig config) {
+        if (buttons != null) {
+            buttons.surfaceCreated();
+        }
         program = program(VERTEX_SHADER, FRAGMENT_SHADER);
         aPos = GLES20.glGetAttribLocation(program, "aPos");
         aTex = GLES20.glGetAttribLocation(program, "aTex");
@@ -84,10 +101,16 @@ final class Screen implements GLSurfaceView.Renderer {
     @Override
     public void onSurfaceChanged(GL10 unused, int w, int h) {
         float scale = Math.min(w / (float) Game.W, h / (float) Game.H);
-        vw = Math.round(Game.W * scale);
-        vh = Math.round(Game.H * scale);
-        vx = (w - vw) / 2;
-        vy = (h - vh) / 2;
+        synchronized (this) {
+            vw = Math.round(Game.W * scale);
+            vh = Math.round(Game.H * scale);
+            vx = (w - vw) / 2;
+            vy = (h - vh) / 2;
+            top = h - vy - vh;
+        }
+        if (buttons != null) {
+            buttons.layout(w, h, vx, top, vw, vh);
+        }
 
         int[] max = new int[1];
         GLES20.glGetIntegerv(GLES20.GL_MAX_TEXTURE_SIZE, max, 0);
@@ -146,6 +169,9 @@ final class Screen implements GLSurfaceView.Renderer {
         } else {
             draw(gameTexture, gameCoords);
         }
+        if (buttons != null) {
+            buttons.draw(Game.touchButtons());
+        }
     }
 
     private void draw(int texture, FloatBuffer coords) {
@@ -168,7 +194,7 @@ final class Screen implements GLSurfaceView.Renderer {
         return id[0];
     }
 
-    private static int program(String vertex, String fragment) {
+    static int program(String vertex, String fragment) {
         int p = GLES20.glCreateProgram();
         GLES20.glAttachShader(p, shader(GLES20.GL_VERTEX_SHADER, vertex));
         GLES20.glAttachShader(p, shader(GLES20.GL_FRAGMENT_SHADER, fragment));

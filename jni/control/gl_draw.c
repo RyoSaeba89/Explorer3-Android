@@ -10,7 +10,7 @@
 #include "draw.h"
 #include "rows.h"
 
-extern unsigned char console_font_8x16[];  /* libogc2's CP437 font (GC-Explorer3/extern/font) */
+extern unsigned char console_font_8x16[];  /* font_8x16.c: CP437, libogc2's */
 
 #define FONT_UP   4                 /* font texture enlarged 4 times: smoothing only softens edges */
 #define FONT_TW   (16 * 8 * FONT_UP)
@@ -281,4 +281,14 @@ void gl_end(void)
 {
     flush();
     glDisable(GL_SCISSOR_TEST);
+}
+
+bool gl_canvas_point(float sx, float sy, float *cx, float *cy)
+{
+    if (vw <= 0 || vh <= 0)
+        return false;
+    float top = (float)(surfH - vy - vh);   /* vy counts from the bottom */
+    *cx = (sx - (float)vx) * CANVAS_W / (float)vw;
+    *cy = (sy - top) * CANVAS_H / (float)vh;
+    return *cx >= 0 && *cx < CANVAS_W && *cy >= 0 && *cy < CANVAS_H;
 }

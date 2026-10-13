@@ -7,12 +7,12 @@ import android.media.AudioTrack;
 import java.util.Arrays;
 
 /**
- * Mission control's sound: GC-Explorer3's synthesis (the notes, the take-off
+ * Mission control's sound: the web page's synthesis (the notes, the take-off
  * rumble) rendered natively at 48 kHz stereo, written to an AudioTrack. One
  * thread per process; silenced while the app is in the background.
  */
 final class ControlAudio implements Runnable {
-    static final int RATE = 48000;   // SOUND_RATE of GC-Explorer3's sound.h
+    static final int RATE = 48000;   // SOUND_RATE of jni/control/sound.h
     private static final int FRAMES = 1024;
 
     private static ControlAudio instance;

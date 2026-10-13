@@ -25,7 +25,24 @@ enum Code {
     // From 33 on: a printable character of a plugged-in keyboard
 };
 
+// Transparent touch buttons, shown when no gamepad was found at start
+// (TouchButtons.java uses the same bits): the ones useful on this screen
+enum TouchButton {
+    TB_BACK = 1,
+    TB_QUIT = 2,     // Java quits by itself
+    TB_PAUSE = 4,
+    TB_HELP = 8,     // Morse code (HELP)
+    TB_REPLAY = 16,  // the Morse signal again (SPACE)
+    TB_PAUSED = 32,  // not a button: the pause button shows "resume"
+};
+
 // Any thread: queues a button or key
 void push(int code);
+
+// Any thread: queues a tap at (x, y) of the game's picture (display::W x display::H)
+void tap(int x, int y);
+
+// Any thread: TouchButton bits for the current screen
+unsigned touchButtons();
 
 }  // namespace input

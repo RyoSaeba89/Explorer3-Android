@@ -1,13 +1,12 @@
-/* See ui.h. Layout and colours follow GC-Explorer3's network screens
- * (netui.c) and mission control's pages. */
+/* See ui.h. Layout and colours follow mission control's pages (panel.c). */
 #include "ui.h"
 
 #include <stdio.h>
 #include <string.h>
 
 #include "draw.h"
-#include "netui.h"
 #include "text.h"
+#include "texts.h"
 
 #define C_BG      0x06061a
 #define C_TEAM    0x50c8ff
@@ -18,6 +17,7 @@
 #define C_FIELD   0x202642
 #define C_BORDER  0x465a8c
 #define C_SEL     0xffe146
+#define C_STATUS  0xff8800   /* #etat of the web page */
 
 #define VH        (CANVAS_H / 100.0f)
 #define S_BODY    DRAW_MIN_SCALE
@@ -35,10 +35,10 @@ enum {
     T_SEARCH_TITLE, T_SEARCH_ON, T_NONE, T_NONE_HELP, T_LIST_TITLE, T_CREW,
     T_ADDR_TITLE, T_ADDR_HELP, T_ADDR_OTHER_NET, T_ADDR_INVALID, T_ADDR_IS_SELF, T_ADDR_NET_BCAST,
     T_CONN_TITLE, T_CONN_WAIT, T_ERR_TITLE, T_ERR_UNREACHABLE, T_ERR_REFUSED, T_ERR_NOT_GAME,
-    T_ERR_NO_SOCKET, T_LOST,
+    T_ERR_NO_SOCKET, T_LOST, T_OLD_GAME,
     /* button hints */
     T_K_QUIT, T_K_BACK, T_K_SEARCH_AGAIN, T_K_TYPE, T_K_CONNECT, T_K_CHOOSE, T_K_NUMBER, T_K_TEN,
-    T_K_RETRY, T_K_CANCEL, T_K_LEAVE,
+    T_K_RETRY, T_K_CANCEL, T_K_LEAVE, T_K_EDIT,
     T_COUNT
 };
 
@@ -78,6 +78,8 @@ static const char *const TEXTS[T_COUNT][2] = {
     [T_ERR_NO_SOCKET]  = {"Plus de connexion disponible : relancer l'application.",
                           "No connection left: restart the app."},
     [T_LOST]           = {"Connexion perdue.", "Connection lost."},
+    [T_OLD_GAME]       = {"Jeu d'une autre version sur l'�quipage : mettre les deux appareils � jour.",
+                          "The crew's game is another version: update both devices."},
     [T_K_QUIT]         = {"Retour au menu", "Back to menu"},
     [T_K_BACK]         = {"Retour", "Back"},
     [T_K_SEARCH_AGAIN] = {"Chercher encore", "Search again"},
@@ -89,6 +91,7 @@ static const char *const TEXTS[T_COUNT][2] = {
     [T_K_RETRY]        = {"Réessayer", "Try again"},
     [T_K_CANCEL]       = {"Annuler", "Cancel"},
     [T_K_LEAVE]        = {"Changer d'équipage", "Change crew"},
+    [T_K_EDIT]         = {"Changer l'adresse", "Change the address"},
 };
 
 static const char *t(int id, int lang)
@@ -96,11 +99,63 @@ static const char *t(int id, int lang)
     return TEXTS[id][lang ? 1 : 0];
 }
 
+/* --- what can be tapped ------------------------------------------------------- */
+
+#define MAX_TAPS  12
+#define TAP_PAD   10.0f   /* fingers are wide: a little more than drawn */
+
+static struct {
+    float x, y, w, h;
+    int action, arg;
+} taps[MAX_TAPS];
+static int ntaps;
+
+static void tap_area(float x, float y, float w, float h, int action, int arg)
+{
+    if (ntaps >= MAX_TAPS || action == TAP_NONE)
+        return;
+    taps[ntaps].x = x - TAP_PAD;
+    taps[ntaps].y = y - TAP_PAD;
+    taps[ntaps].w = w + 2 * TAP_PAD;
+    taps[ntaps].h = h + 2 * TAP_PAD;
+    taps[ntaps].action = action;
+    taps[ntaps].arg = arg;
+    ntaps++;
+}
+
+void ui_taps_clear(void)
+{
+    ntaps = 0;
+}
+
+int ui_tap(float x, float y, int *arg)
+{
+    for (int i = 0; i < ntaps; i++) {
+        if (x >= taps[i].x && x < taps[i].x + taps[i].w && y >= taps[i].y && y < taps[i].y + taps[i].h) {
+            *arg = taps[i].arg;
+            return taps[i].action;
+        }
+    }
+    return TAP_NONE;
+}
+
 /* --- buttons ------------------------------------------------------------------ */
 
-enum { B_OK, B_BACK, B_KB, B_DPAD, B_LR };
+/* B_EDIT: without a gamepad only, the address screen's "change the address" */
+enum { B_OK, B_BACK, B_KB, B_DPAD, B_LR, B_EDIT };
 
 #define ICON  26.0f   /* button pictures, in canvas units */
+
+static int tap_of(int b)
+{
+    switch (b) {
+    case B_OK:   return TAP_OK;
+    case B_BACK: return TAP_BACK;
+    case B_KB:   return TAP_KB;
+    case B_EDIT: return TAP_ADDRESS;
+    default:     return TAP_NONE;   /* the D-pad and L R have nothing to tap */
+    }
+}
 
 /* Draws a button's picture at (x, y), top-left; returns its width. */
 static float button(float x, float y, int b, bool ouya)
@@ -144,21 +199,55 @@ typedef struct {
     int text;
 } hint_t;
 
-/* "picture text   picture text" centred along the bottom */
+/* Without a gamepad: the hint's words in a frame, to tap */
+#define WORD_PAD  16.0f
+
+static bool shown_hint(const ui_t *u, int b)
+{
+    if (u->pad == PAD_TOUCH)
+        return b != B_DPAD && b != B_LR;
+    return b != B_EDIT;
+}
+
+/* "picture text   picture text" centred along the bottom; each one can be
+ * tapped (touch screens) */
 static void hints(const ui_t *u, const hint_t *h, int n)
 {
     const float gap = 40, inner = 10;
+    bool words = u->pad == PAD_TOUCH;
+    bool ouya = u->pad == PAD_OUYA;
     float total = 0;
+    int shown = 0;
     for (int i = 0; i < n; i++) {
-        float bw = h[i].button == B_LR ? text_width(1.25f, u->ouya ? "L1 R1" : "L R") + 12 : ICON;
-        total += bw + inner + text_width(S_BODY, t(h[i].text, u->lang)) + (i ? gap : 0);
+        if (!shown_hint(u, h[i].button))
+            continue;
+        float tw = text_width(S_BODY, t(h[i].text, u->lang));
+        float bw = h[i].button == B_LR ? text_width(1.25f, ouya ? "L1 R1" : "L R") + 12 : ICON;
+        total += (words ? tw + 2 * WORD_PAD : bw + inner + tw) + (shown++ ? gap : 0);
     }
     float x = CX - total / 2, y = CANVAS_H - 60;
     draw_fill(0, y - 14, CANVAS_W, 1, rgb(C_BORDER));
     for (int i = 0; i < n; i++) {
-        x += button(x, y, h[i].button, u->ouya) + inner;
-        draw_text(x, y + (ICON - GLYPH_H * S_BODY) / 2, S_BODY, rgb(C_DIM), 0, t(h[i].text, u->lang));
-        x += text_width(S_BODY, t(h[i].text, u->lang)) + gap;
+        if (!shown_hint(u, h[i].button))
+            continue;
+        const char *s = t(h[i].text, u->lang);
+        float tw = text_width(S_BODY, s);
+        float ty = y + (ICON - GLYPH_H * S_BODY) / 2;
+        if (words) {
+            float w = tw + 2 * WORD_PAD;
+            draw_fill(x, y - 6, w, ICON + 12, rgb(C_FIELD));
+            draw_frame(x, y - 6, w, ICON + 12, 2.0f, rgb(C_BORDER));
+            draw_text(x + WORD_PAD, ty, S_BODY, rgb(C_TEXT), 0, s);
+            tap_area(x, y - 6, w, ICON + 12, tap_of(h[i].button), 0);
+            x += w + gap;
+        } else {
+            float x0 = x;
+            x += button(x, y, h[i].button, ouya) + inner;
+            draw_text(x, ty, S_BODY, rgb(C_DIM), 0, s);
+            x += tw;
+            tap_area(x0, y, x - x0, ICON, tap_of(h[i].button), 0);
+            x += gap;
+        }
     }
 }
 
@@ -219,7 +308,7 @@ static void network_line(const ui_t *u, float y)
 #define F_H      (GLYPH_H * S_BIG + 2 * F_PAD_Y)
 #define F_DOT    (GLYPH_W * S_BIG)
 
-/* The 4 numbers of the address, the chosen one framed in yellow (netui.c) */
+/* The 4 numbers of the address, the chosen one framed in yellow */
 static float fields(const addr_entry_t *e, float y)
 {
     float x = CX - (4 * F_W + 3 * F_DOT) / 2;
@@ -298,6 +387,7 @@ void ui_draw(const ui_t *u)
             addr_format(u->found[i].ip, ip);
             snprintf(line, sizeof(line), "%s%s", t(T_CREW, u->lang), ip);
             draw_text_centered(CX, y + 8, w, 2.0f, 0, rgb(sel ? C_SEL : C_TEXT), 1, line);
+            tap_area(x, y, w, h, TAP_CREW, i);
             y += h + 10;
         }
         hint_t h[] = {{B_DPAD, T_K_CHOOSE}, {B_OK, T_K_CONNECT}, {B_KB, T_K_TYPE}, {B_BACK, T_K_QUIT}};
@@ -307,14 +397,16 @@ void ui_draw(const ui_t *u)
     case UI_ADDRESS: {
         y = header(u, T_ADDR_TITLE);
         y += para(y, t(T_ADDR_HELP, u->lang), C_TEXT) + 2 * GAP;
+        tap_area(CX - (4 * F_W + 3 * F_DOT) / 2, y, 4 * F_W + 3 * F_DOT, F_H, TAP_ADDRESS, 0);
         y += fields(&u->entry, y) + 2 * GAP;
-        int st = addr_check(u->entry.ip, u->self, NULL);
+        int st = addr_check(u->entry.ip, u->self);
         int id = st == ADDR_OTHER_NET ? T_ADDR_OTHER_NET : st == ADDR_INVALID ? T_ADDR_INVALID
                : st == ADDR_SELF ? T_ADDR_IS_SELF : st == ADDR_NET_BCAST ? T_ADDR_NET_BCAST : -1;
         if (id >= 0)
             para(y, t(id, u->lang), st == ADDR_OTHER_NET ? C_SEL : C_WARN);
-        hint_t h[] = {{B_DPAD, T_K_NUMBER}, {B_LR, T_K_TEN}, {B_OK, T_K_CONNECT}, {B_BACK, T_K_BACK}};
-        hints(u, h, 4);
+        hint_t h[] = {{B_DPAD, T_K_NUMBER}, {B_LR, T_K_TEN}, {B_EDIT, T_K_EDIT}, {B_OK, T_K_CONNECT},
+                      {B_BACK, T_K_BACK}};
+        hints(u, h, 5);
         break;
     }
     case UI_CONNECTING: {
@@ -338,16 +430,29 @@ void ui_draw(const ui_t *u)
     }
 }
 
-void ui_stream_hint(int lang, bool ouya)
+void ui_overlay(int lang, bool reconnecting, bool old_game)
 {
-    ui_t u;
-    memset(&u, 0, sizeof(u));
-    u.lang = lang;
-    u.ouya = ouya;
-    float w = ICON + 10 + text_width(S_BODY, t(T_K_LEAVE, lang)) + 24;
+    float y = CANVAS_H - 16 - GLYPH_H * S_BODY;
+    if (reconnecting) {
+        draw_text(16, y, S_BODY, rgb(C_STATUS), 0, tx(TX_CONNECTING, lang));
+        y -= LINE_H;
+    }
+    if (old_game)
+        draw_text(16, y, S_BODY, rgb(C_WARN), 0, t(T_OLD_GAME, lang));
+}
+
+void ui_stream_hint(int lang, int pad)
+{
+    bool words = pad == PAD_TOUCH;   /* no picture: the words, to tap */
+    float w = (words ? 0 : ICON + 10) + text_width(S_BODY, t(T_K_LEAVE, lang)) + 24;
     float x = CANVAS_W - w - 8, y = CANVAS_H - ICON - 22;
     draw_fill(x, y, w, ICON + 14, (rgba_t){6, 6, 26, 220});
+    if (words)
+        draw_frame(x, y, w, ICON + 14, 2.0f, rgb(C_BORDER));
+    tap_area(x, y, w, ICON + 14, TAP_BACK, 0);
     x += 12;
-    x += button(x, y + 7, B_BACK, ouya) + 10;
-    draw_text(x, y + 7 + (ICON - GLYPH_H * S_BODY) / 2, S_BODY, rgb(C_DIM), 0, t(T_K_LEAVE, lang));
+    if (!words)
+        x += button(x, y + 7, B_BACK, pad == PAD_OUYA) + 10;
+    draw_text(x, y + 7 + (ICON - GLYPH_H * S_BODY) / 2, S_BODY, rgb(words ? C_TEXT : C_DIM), 0,
+              t(T_K_LEAVE, lang));
 }

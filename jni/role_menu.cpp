@@ -36,8 +36,14 @@ const char *const NAMES[2][2] = {{"Équipage", "Crew"}, {"Centre de contrôle", 
 const char *const INFOS[2][2] = {{"Cet appareil joue, sur Mars", "This device plays, on Mars"},
                                  {"Cet appareil sert d'écran", "This device is the screen"}};
 
-// Footer: arrows drawn as triangles, then the device's buttons
-#if defined(EXPLORER3_OUYA)
+constexpr int TOP = 32, BOX_H = 32, GAP = 8;  // drawChoices(…, 2, sel, 32, 32, 8)
+
+// Footer: arrows drawn as triangles, then the device's buttons (touch:
+// "Tap: select", and the transparent back button)
+#if defined(EXPLORER3_TOUCH)
+const char *const TAP[2] = {"Toucher", "Tap"};
+const char *const BACK_KEY = "←";
+#elif defined(EXPLORER3_OUYA)
 const char *const OK_KEY = "O";
 const char *const BACK_KEY = "A";
 #else
@@ -71,6 +77,17 @@ void footer(int lang) {
     sprite.fillRect(0, display::H - 14, display::W, 14, C_PANEL);
     sprite.drawFastHLine(0, display::H - 15, display::W, C_BORDER);
     int y = display::H - 13;
+#if defined(EXPLORER3_TOUCH)
+    int wTap = sprite.textWidth(TAP[lang]) + sprite.textWidth(CHOOSE[lang]);
+    int wBack = sprite.textWidth(BACK_KEY) + sprite.textWidth(BACK_TEXT[lang]);
+    int gap = 24;
+    int x = (display::W - (wTap + wBack + gap)) / 2;
+    text(TAP[lang], x, y, C_ORANGE);
+    text(CHOOSE[lang], x + sprite.textWidth(TAP[lang]), y, C_DIM);
+    x += wTap + gap;
+    text(BACK_KEY, x, y, C_ORANGE);
+    text(BACK_TEXT[lang], x + sprite.textWidth(BACK_KEY), y, C_DIM);
+#else
     int wChoose = 18 + sprite.textWidth(CHOOSE[lang]);
     int wOk = sprite.textWidth(OK_KEY) + sprite.textWidth(OK_TEXT[lang]);
     int wBack = sprite.textWidth(BACK_KEY) + sprite.textWidth(BACK_TEXT[lang]);
@@ -85,6 +102,7 @@ void footer(int lang) {
     x += wOk + gap;
     text(BACK_KEY, x, y, C_ORANGE);
     text(BACK_TEXT[lang], x + sprite.textWidth(BACK_KEY), y, C_DIM);
+#endif
 }
 
 }  // namespace
@@ -110,6 +128,16 @@ Choice selected() {
     return sel == CONTROL ? CONTROL : CREW;
 }
 
+int choiceAt(int x, int y) {
+    for (int i = 0; i < 2; i++) {
+        int top = TOP + i * (BOX_H + GAP);
+        if (x >= 16 && x < display::W - 16 && y >= top && y < top + BOX_H) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 void draw(uint16_t *picture, int lang) {
     if (!shown) {
         return;
@@ -125,9 +153,9 @@ void draw(uint16_t *picture, int lang) {
     stars();
     text(TITLE[lang], display::W / 2 + 2, 9, C_BLACK, top_center);  // shadow
     text(TITLE[lang], display::W / 2 + 1, 8, C_ORANGE, top_center);
-    for (int i = 0; i < 2; i++) {  // drawChoices(…, 2, sel, 32, 32, 8)
-        const int top = 32, h = 32, gap = 8;
-        int y = top + i * (h + gap);
+    for (int i = 0; i < 2; i++) {
+        const int h = BOX_H;
+        int y = TOP + i * (h + GAP);
         bool on = i == sel;
         sprite.fillRoundRect(16, y, display::W - 32, h, 5, on ? C_PANEL2 : C_PANEL);
         sprite.drawRoundRect(16, y, display::W - 32, h, 5, on ? C_YELLOW : C_BORDER);

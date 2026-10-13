@@ -1,7 +1,7 @@
 /* Mission control on Android: the app as the crew's screen, in place of a
- * web browser, like GC-Explorer3 on the GameCube. GC-Explorer3's pure code
- * (protocol, pages, banner, sound) is compiled unchanged from its folder;
- * this file is its main loop for Android (see GC-Explorer3/source/gc/main.c).
+ * web browser. The protocol, pages, banner and sound are those of the web
+ * page (session.h and the files it uses, shared with Explorer3-RaspberryPi);
+ * this file is the main loop for Android.
  *
  *   NO_NETWORK  Android is not connected (its Wi-Fi settings are used)
  *   SEARCH      looking for the crew on the local network (user's choice);
@@ -15,6 +15,7 @@
  * Everything runs on the GL thread (Control.frame), except the search
  * (net.c) and the sound (Control.mix, audio thread): the session is shared
  * with the sound under a lock. Java calls come from the UI thread. */
+#include <errno.h>
 #include <jni.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -22,11 +23,10 @@
 #include <string.h>
 #include <time.h>
 
-#include "config.h"
+#include "addr.h"
 #include "draw.h"
 #include "gl_draw.h"
 #include "net.h"
-#include "netui.h"
 #include "session.h"
 #include "sound.h"
 #include "ui.h"
@@ -43,7 +43,11 @@ enum { ST_NO_NETWORK, ST_SEARCH, ST_NONE, ST_LIST, ST_ADDRESS, ST_PROBE, ST_CONN
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;   /* everything below */
 static session_t ses;
 static ui_t ui;
-static config_t cfg;
+static struct {
+    bool    has_ip;
+    uint8_t ip[4];   /* the last crew that answered */
+    int     lang;    /* 0 French, 1 English: the last language of the crew */
+} cfg;
 static char cfgPath[512];
 static int state = ST_NO_NETWORK;
 static int targetPort = PORT_CARDPUTER;
@@ -59,6 +63,13 @@ static bool netKnown, netChanged;
 
 /* buttons from Java: presses since the last frame, and held ones */
 static unsigned pressed, held;
+
+/* touch: the last tap (surface pixels), the screen whose tap areas were drawn
+ * last, and the address asked to Android's number keyboard (Java) */
+static bool tapPending;
+static float tapX, tapY;
+static int tapsState = -1;
+static bool addressWanted;
 
 /* sound */
 static bool audioAnchored;
@@ -76,17 +87,36 @@ static bool down(int b)
     return (pressed & (1u << b)) != 0;
 }
 
-/* --- settings (GC-Explorer3's explorer3.conf format: last address, language) */
+/* --- settings: control.conf, "ip=a.b.c.d" and "lang=fr|en" lines ---------------- */
+
+static void cfg_load(void)
+{
+    FILE *f = fopen(cfgPath, "r");
+    if (!f)
+        return;
+    char line[128];
+    while (fgets(line, sizeof(line), f)) {
+        size_t n = strcspn(line, "\r\n");
+        line[n] = 0;
+        if (strncmp(line, "ip=", 3) == 0)
+            cfg.has_ip = ip_parse(line + 3, n - 3, cfg.ip);
+        else if (strcmp(line, "lang=fr") == 0)
+            cfg.lang = 0;
+        else if (strcmp(line, "lang=en") == 0)
+            cfg.lang = 1;
+    }
+    fclose(f);
+}
 
 static void cfg_save(void)
 {
-    char out[128];
-    int n = config_write(&cfg, out, sizeof(out));
-    FILE *f = n > 0 ? fopen(cfgPath, "w") : NULL;
-    if (f) {
-        fwrite(out, 1, (size_t)n, f);
-        fclose(f);
-    }
+    FILE *f = fopen(cfgPath, "w");
+    if (!f)
+        return;
+    if (cfg.has_ip)
+        fprintf(f, "ip=%u.%u.%u.%u\n", cfg.ip[0], cfg.ip[1], cfg.ip[2], cfg.ip[3]);
+    fprintf(f, "lang=%s\n", cfg.lang ? "en" : "fr");
+    fclose(f);
 }
 
 static void cfg_follow(void)
@@ -107,6 +137,31 @@ static void cfg_follow(void)
 
 /* --- connection ----------------------------------------------------------------- */
 
+/* Why link_start() / link_poll() failed: -errno */
+static int reason_connect(int err)
+{
+    if (err == -ECONNRESET || err == -ECONNREFUSED)
+        return NET_REASON_REFUSED;    /* RST to the SYN: the device is there */
+    if (err == -ENOMEM || err == -ENOBUFS || err == -ENFILE || err == -EMFILE)
+        return NET_REASON_NO_SOCKET;
+    return NET_REASON_UNREACHABLE;
+}
+
+/* Why a session ended */
+static int reason_session(int err)
+{
+    switch (err) {
+    case WS_ERR_HS_TOOLONG:
+    case WS_ERR_HS_STATUS:
+    case WS_ERR_HS_UPGRADE:
+    case WS_ERR_HS_ACCEPT:
+    case SES_ERR_HS_LATE:
+        return NET_REASON_NOT_GAME;
+    default:
+        return NET_REASON_LOST;
+    }
+}
+
 static void nonce16(uint8_t out[16])
 {
     uint32_t x = now_ms() ^ (uint32_t)rand() ^ 0x9E3779B9u;
@@ -124,7 +179,7 @@ static bool begin_session(uint32_t now)
     uint8_t nonce[16];
     addr_format(ui.target, host);
     nonce16(nonce);
-    int n = session_begin(&ses, now, host, nonce, req, sizeof(req));
+    int n = session_begin(&ses, now, host, (unsigned)targetPort, nonce, req, sizeof(req));
     if (n < 0 || link_write(req, n) < 0) {
         link_close();
         return false;
@@ -160,7 +215,7 @@ static void connect_to(const uint8_t ip[4], int port, uint32_t now)
     ui.reason = NET_REASON_NONE;
     int r = link_start(ip, port);
     if (r < 0) {
-        ui.reason = net_reason_connect(r);
+        ui.reason = reason_connect(r);
         state = ST_ERROR;
         return;
     }
@@ -169,9 +224,46 @@ static void connect_to(const uint8_t ip[4], int port, uint32_t now)
 
 static void to_address(uint32_t now)
 {
-    entry_init(&ui.entry, ui.self, NULL, cfg.has_ip ? cfg.ip : NULL);
+    entry_init(&ui.entry, ui.self, cfg.has_ip ? cfg.ip : NULL);
     ui.since = now;
     state = ST_ADDRESS;
+    if (ui.pad == PAD_TOUCH)
+        addressWanted = true;   /* no gamepad: Android's number keyboard at once */
+}
+
+/* A tap: what the last frame drew there, as the matching button */
+static void take_tap(void)
+{
+    if (!tapPending)
+        return;
+    tapPending = false;
+    float x, y;
+    int arg = 0;
+    if (tapsState != state || !gl_canvas_point(tapX, tapY, &x, &y))
+        return;   /* drawn for another screen, or outside the picture */
+    switch (ui_tap(x, y, &arg)) {
+    case TAP_OK:
+        pressed |= 1u << BTN_OK;
+        break;
+    case TAP_BACK:
+        pressed |= 1u << BTN_BACK;
+        break;
+    case TAP_KB:
+        pressed |= 1u << BTN_KB;
+        break;
+    case TAP_CREW:
+        if (state == ST_LIST && arg < ui.nfound) {
+            ui.sel = arg;
+            pressed |= 1u << BTN_OK;
+        }
+        break;
+    case TAP_ADDRESS:
+        if (state == ST_ADDRESS)
+            addressWanted = true;
+        break;
+    default:
+        break;
+    }
 }
 
 static unsigned entry_keys_of(unsigned h)
@@ -251,7 +343,7 @@ static void step(uint32_t now)
     case ST_ADDRESS:
         entry_keys(&ui.entry, entry_keys_of(held), now);
         if (down(BTN_OK)) {
-            int st = addr_check(ui.entry.ip, ui.self, NULL);
+            int st = addr_check(ui.entry.ip, ui.self);
             if (st == ADDR_OK || st == ADDR_OTHER_NET) {   /* other network: warned, not forbidden */
                 memcpy(ui.target, ui.entry.ip, 4);
                 finder_start(ui.self, ui.entry.ip);         /* which port: Cardputer or Android */
@@ -298,7 +390,7 @@ static void step(uint32_t now)
             streamSince = now;
             state = ST_STREAM;
         } else if (r < 0) {
-            ui.reason = net_reason_connect(r);
+            ui.reason = reason_connect(r);
             state = ST_ERROR;
         } else if ((int32_t)(now - ui.since) > WAIT_MS) {
             link_close();
@@ -342,7 +434,7 @@ static void step(uint32_t now)
             }
             session_tick(&ses, now);
             if (ses.state == SES_CLOSED) {
-                int reason = net_reason_session(ses.error);
+                int reason = reason_session(ses.error);
                 bool wasOpen = ses.frames > 0 || ses.texts > 0;
                 link_close();
                 linked = false;
@@ -378,6 +470,8 @@ static void step(uint32_t now)
 
 static void draw(uint32_t now)
 {
+    ui_taps_clear();
+    tapsState = state;
     if (state == ST_STREAM) {
         if (panel_shown(&ses.panel)) {
             panel_draw(&ses.panel, now, ses.lang);
@@ -389,9 +483,9 @@ static void draw(uint32_t now)
             memset(&ses.dirty, 0, sizeof(ses.dirty));
             banner_draw(&ses.banner, now);
         }
-        netui_overlay(ses.lang, !linked || ses.state == SES_HANDSHAKE, ses.bad_panels > 0);
+        ui_overlay(ses.lang, !linked || ses.state == SES_HANDSHAKE, ses.bad_panels > 0);
         if ((int32_t)(now - streamSince) < HINT_MS)
-            ui_stream_hint(ses.lang, ui.ouya);
+            ui_stream_hint(ses.lang, ui.pad);
         return;
     }
     ui.lang = ses.lang;
@@ -413,8 +507,8 @@ static void draw(uint32_t now)
 #define JNI_FN(ret, name) JNIEXPORT ret JNICALL Java_io_github_ryosaeba89_explorer3_Control_##name
 
 /* Once per process: settings file, language before the crew's (0 French,
- * 1 English), buttons drawn as the OUYA's or the Xperia Play's. */
-JNI_FN(void, start)(JNIEnv *env, jclass cls, jstring path, jint lang, jboolean ouya)
+ * 1 English), buttons the hints show (PAD_..., Device.BUTTONS). */
+JNI_FN(void, start)(JNIEnv *env, jclass cls, jstring path, jint lang, jint pad)
 {
     (void)cls;
     static bool started;
@@ -424,19 +518,12 @@ JNI_FN(void, start)(JNIEnv *env, jclass cls, jstring path, jint lang, jboolean o
         const char *p = (*env)->GetStringUTFChars(env, path, NULL);
         snprintf(cfgPath, sizeof(cfgPath), "%s", p);
         (*env)->ReleaseStringUTFChars(env, path, p);
-        config_defaults(&cfg);
         cfg.lang = lang;
-        FILE *f = fopen(cfgPath, "r");
-        if (f) {
-            char text[512];
-            size_t n = fread(text, 1, sizeof(text), f);
-            fclose(f);
-            config_parse(&cfg, text, n);
-        }
+        cfg_load();
         session_init(&ses);
         ses.lang = cfg.lang;   /* until the first L message */
         memset(&ui, 0, sizeof(ui));
-        ui.ouya = ouya;
+        ui.pad = pad;
         srand(now_ms());
     }
     if (!ses.lang_known)
@@ -481,6 +568,58 @@ JNI_FN(void, button)(JNIEnv *env, jclass cls, jint code, jboolean isDown)
     pthread_mutex_unlock(&lock);
 }
 
+/* A tap at (x, y) of the surface, in pixels from its top left (UI thread) */
+JNI_FN(void, touch)(JNIEnv *env, jclass cls, jfloat x, jfloat y)
+{
+    (void)env;
+    (void)cls;
+    pthread_mutex_lock(&lock);
+    tapX = x;
+    tapY = y;
+    tapPending = true;
+    pthread_mutex_unlock(&lock);
+}
+
+/* True once when the address is to be typed on Android's number keyboard */
+JNI_FN(jboolean, addressRequested)(JNIEnv *env, jclass cls)
+{
+    (void)env;
+    (void)cls;
+    pthread_mutex_lock(&lock);
+    bool wanted = addressWanted && state == ST_ADDRESS;
+    addressWanted = false;
+    pthread_mutex_unlock(&lock);
+    return wanted;
+}
+
+/* The address being typed, "192.168.1.42" */
+JNI_FN(jstring, addressText)(JNIEnv *env, jclass cls)
+{
+    (void)cls;
+    char ip[16];
+    pthread_mutex_lock(&lock);
+    addr_format(ui.entry.ip, ip);
+    pthread_mutex_unlock(&lock);
+    return (*env)->NewStringUTF(env, ip);
+}
+
+/* The address typed on Android's keyboard: taken and confirmed, as with the
+ * gamepad; ignored if it is not an address */
+JNI_FN(void, setAddress)(JNIEnv *env, jclass cls, jstring text)
+{
+    (void)cls;
+    const char *s = (*env)->GetStringUTFChars(env, text, NULL);
+    uint8_t a[4];
+    bool ok = ip_parse(s, strlen(s), a);
+    (*env)->ReleaseStringUTFChars(env, text, s);
+    pthread_mutex_lock(&lock);
+    if (ok && state == ST_ADDRESS) {
+        memcpy(ui.entry.ip, a, 4);
+        pressed |= 1u << BTN_OK;
+    }
+    pthread_mutex_unlock(&lock);
+}
+
 JNI_FN(void, surfaceCreated)(JNIEnv *env, jclass cls)
 {
     (void)env;
@@ -495,6 +634,7 @@ JNI_FN(jboolean, frame)(JNIEnv *env, jclass cls, jint w, jint h)
     (void)cls;
     uint32_t now = now_ms();
     pthread_mutex_lock(&lock);
+    take_tap();
     step(now);
     pressed = 0;
     cfg_follow();

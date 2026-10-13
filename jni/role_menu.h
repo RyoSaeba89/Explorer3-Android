@@ -16,6 +16,9 @@ void close();
 void move(int dy);
 Choice selected();
 
+// Touch: the choice under (x, y) of the picture, or -1
+int choiceAt(int x, int y);
+
 // Draws the menu over the whole picture (RGB565, display::W x display::H)
 void draw(uint16_t *picture, int lang);
 

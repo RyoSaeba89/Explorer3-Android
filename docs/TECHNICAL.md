@@ -10,7 +10,7 @@
 4. [Code layout](#4-code-layout)
 5. [The game on Android](#5-the-game-on-android)
 6. [Android texts and buttons](#6-android-texts-and-buttons)
-7. [Gamepad, on-screen keyboard, role choice](#7-gamepad-on-screen-keyboard-role-choice)
+7. [Gamepad, touch, on-screen keyboard, role choice](#7-gamepad-touch-on-screen-keyboard-role-choice)
 8. [Sound](#8-sound)
 9. [Multiplayer: the Crew](#9-multiplayer-the-crew)
 10. [Multiplayer: Mission control](#10-multiplayer-mission-control)
@@ -20,26 +20,31 @@
 
 ## 1. Goal and status
 
-A single APK for the Sony Ericsson **Xperia Play** (Android 2.3, API 10) and the **OUYA** (Android 4.1, API 16), played with the gamepad. The game is the Cardputer's ([Escape-Game-Cardputer](https://github.com/RyoSaeba89/Escape-Game-Cardputer) v3.0.0): `src/main.cpp` is **compiled for Android**, as its PC simulator already does. Mission control reuses the pure code of [GC-Explorer3](https://github.com/RyoSaeba89/GC-Explorer3) v2.0.0. Android modifies neither project: both are read from their folders, and what changes for Android is applied to copies at build time.
+A single APK for the Sony Ericsson **Xperia Play** (Android 2.3, API 10) and the **OUYA** (Android 4.1, API 16), played with the gamepad, and with the finger on any touch screen (phones included). The game is the Cardputer's ([Escape-Game-Cardputer](https://github.com/RyoSaeba89/Escape-Game-Cardputer) v3.0.0): `src/main.cpp` is **compiled for Android**, as its PC simulator already does. Mission control (`jni/control/`) does what the game's web page does; its core is shared with Explorer3-RaspberryPi. Android does not modify the game: it is read from its folder, and what changes for Android is applied to copies at build time.
 
 **Version 1.0**: Solo, Multiplayer as the Crew and as Mission control. Tried on the Xperia Play (section 12); not yet on the OUYA.
 
+**Version 3.0.0**: touch, in the game and in Mission control (section 7); Mission control has its own code, shared with Explorer3-RaspberryPi.
+
 ## 2. Decisions
 
-Made by the user on 2026-10-10. Not to be reopened without a new reason.
+Made by the user on 2026-10-10, then on 2026-10-13 for touch and Mission control's code. Not to be reopened without a new reason.
 
 | Topic | Decision |
 |---|---|
 | Roles | Crew (the game runs on the device) and Mission control (the device is the screen) in the same APK, plus **Solo** mode. The role is chosen after "Multiplayer" in the game's menu. |
 | Cardputer | No firmware change for Android: protocol v3.0.0 as is. |
 | Network | No tethering: the device uses Android's Wi-Fi settings (or the OUYA's Ethernet); the game never searches, joins or creates a network. Mission control: automatic search for the crew, typed address as a fallback; home router or the Cardputer's Explorer3 network. |
-| Crew ports | **8080** (page) and **8081** (stream): Android forbids 80 and 81 without root. The GameCube only works with a real Cardputer. |
+| Crew ports | **8080** (page) and **8081** (stream): Android forbids 80 and 81 without root. |
 | Technique | Cardputer game compiled natively (NDK r15c); Android side in Java; built by a script calling the SDK tools, no Gradle. |
 | Display | Scaled to fit the whole screen, sharp and clean at any resolution (section 11). Mission-control pages faithful to the web page. No TV-margin setting. |
 | Gamepad | Each maker's conventions (cross / O confirm, circle / A go back). Touchpads ignored. Quit: Start + Select, Menu on the OUYA. Other buttons: section 7. |
+| Touch | All touch screens, in the game and in Mission control. The game itself is touched, no gamepad is drawn. Transparent virtual buttons (back, quit, pause, Morse, again), only where they are useful, in the black bands when the screen is wider than the picture, otherwise over its corners. |
+| Gamepad detection | Once, at start. Xperia Play and OUYA: always a gamepad. Another device with a BT or USB gamepad: the Xperia Play's texts (× ○ △ □), no virtual buttons. No gamepad: texts for the finger and virtual buttons. |
 | On-screen keyboard | Navigated with the D-pad; the cursor starts on the erase key. |
 | Texts | The word "Cardputer" appears nowhere, in French or English; "Cardputer seul" becomes "Solo"; Cardputer keys are replaced by the device's buttons (section 6). |
 | Home button | The game keeps running, as on the Cardputer (sound silenced while the app is in the background). |
+| Mission control | Its code is in this repository (core shared with Explorer3-RaspberryPi), depending on no other project; the address is typed on Android's number keyboard, already filled in. |
 | Identity | `io.github.ryosaeba89.explorer3`, "Explorer 3", icons cut from the title screen (`tools/icons.py`). |
 | Publishing | Public repository, MIT licence, documentation in French and English, code and comments in English; commit after a test on the device; APK signed with a dedicated release key kept outside the repository. |
 
@@ -48,7 +53,6 @@ Made by the user on 2026-10-10. Not to be reopened without a new reason.
 Next to this repository:
 
 - **Escape-Game-Cardputer** v3.0.0 (`GAME_DIR=`, else `../Escape-Game-Cardputer`), with its simulator's M5GFX library, downloaded by `pio run -e simulateur` (`.pio/libdeps/simulateur/M5GFX`, version 0.2.32);
-- **GC-Explorer3** v1.1 (`GC_DIR=`, else `../GC-Explorer3`), with its font `extern/font/console_font_8x16.c`;
 
 and:
 
@@ -63,9 +67,9 @@ tools/build.sh --x86    # adds x86 for the PC emulator
 
 Script steps:
 
-1. **Game copies**, one per device (`$NDK_OUT/game-xperia`, `game-ouya`): `main.cpp` with `tools/android-game.sed`, then `jni/bridge.inc` appended; `textes.h` with `tools/android-texts.sed`, then the device's buttons; `mots.h` (start-up codes and the data of their puzzles) and `dessins.h` (pictures of the maze cells) as they are; `diffusion.h` without `explorer3.local`; `page.inc`, mission control's page extracted from `diffusion.cpp` with `tools/android-page.sed`. The script **stops** if a displayed text still contains "Cardputer", a Cardputer key name or a placeholder, or if a change no longer applies (new game version).
-2. **Mission control texts**: copy of `GC-Explorer3/source/texts.c` with `tools/control-texts.sed` (`$NDK_OUT/control`).
-3. **`ndk-build`**: three libraries, `libexplorer3_xperia.so`, `libexplorer3_ouya.so` (the game, each with its buttons) and `libexplorer3_control.so` (mission control). Output in a short folder (`NDK_OUT`, `~/Android/o` by default) because Windows limits path length.
+1. **Game copies**, one per set of buttons (`$NDK_OUT/game-xperia`, `game-ouya`, `game-touch`): `main.cpp` with `tools/android-game.sed`, then `jni/bridge.inc` appended; `textes.h` with `tools/android-texts.sed`, then the device's buttons (touch copy: `tools/touch-texts.sed`); `mots.h` (start-up codes and the data of their puzzles) and `dessins.h` (pictures of the maze cells) as they are; `diffusion.h` without `explorer3.local`; `page.inc`, mission control's page extracted from `diffusion.cpp` with `tools/android-page.sed`. The script **stops** if a displayed text still contains "Cardputer", a Cardputer key name or a placeholder, if a change no longer applies, or if something touch aims at has moved in the game's drawing (new game version).
+2. **Mission control data**, taken from the game so that it always matches it (`$NDK_OUT/control`): `page_texts.inc`, the texts of the page's `TX` object (`tools/page-texts.awk`), rule 4 saying "starts the game" (the crew may be a Cardputer, an Android device or a Pi); `game_tables.inc`, the `MORSE`, `ASTRO` and `SYMBOLS` tables of `main.cpp`, as they are. The script stops if one of them changed shape.
+3. **`ndk-build`**: four libraries, `libexplorer3_xperia.so`, `libexplorer3_ouya.so`, `libexplorer3_touch.so` (the game, each with its buttons) and `libexplorer3_control.so` (mission control). Output in a short folder (`NDK_OUT`, `~/Android/o` by default) because Windows limits path length.
 4. `aapt2`, `javac` then `d8 --min-api 10`, `classes.dex` and `lib/` added, `zipalign`.
 5. `apksigner` with `--min-sdk-version 10`, which adds the **v1 (JAR, SHA-1) signature** without which Android 2.3 refuses the APK. Key: `KEYSTORE=` and `KEYSTORE_PASS=` (a file holding the password); the SDK debug key by default. Releases are signed with the release key, kept outside the repository.
 
@@ -81,21 +85,24 @@ Game build settings, all outside the game: `-std=gnu++14` (the libc++ of r15c la
 | `jni/display_m5gfx.cpp` | In-memory screen (240 x 135); replaces the "desktop" part of `M5GFX.cpp` (SDL) |
 | `jni/include/M5Cardputer.h`, `Preferences.h` | Replace the simulator's: real speaker, memory in a file, Android's network |
 | `jni/audio.cpp` | The Cardputer's speaker (section 8) |
-| `jni/input.cpp`, `input.h` | Buttons and keys turned into Cardputer key presses |
+| `jni/input.cpp`, `input.h` | Buttons, keys and taps turned into Cardputer key presses |
 | `jni/onscreen_keyboard.cpp` | On-screen keyboard |
 | `jni/role_menu.cpp` | Role choice after "Multiplayer" |
-| `jni/bridge.h`, `bridge.inc` | Reads the game's state (appended to the copy of `main.cpp`) |
+| `jni/bridge.h`, `bridge.inc` | Reads the game's state (appended to the copy of `main.cpp`); what a tap aims at, the useful virtual buttons |
 | `jni/mirror_android.cpp`, `sha1.h`, `network.h` | `mirror::`: the Crew's server (page and stream) and Android's network |
-| `jni/control/control.c` | Mission control: main loop (`GC-Explorer3/source/gc/main.c` for Android) |
-| `jni/control/gl_draw.c` | OpenGL ES 2: GC-Explorer3's `draw.h` and the copy of the crew's screen |
+| `jni/control/control.c` | Mission control: main loop, settings (`control.conf`) |
+| `jni/control/gl_draw.c` | OpenGL ES 2: `draw.h` and the copy of the crew's screen |
 | `jni/control/net.c` | Connection to the crew and search on the network |
-| `jni/control/ui.c` | Mission control's screens before the stream (search, list, address, connecting, error) |
+| `jni/control/ui.c` | Mission control's screens before the stream (search, list, address, connecting, error), notices over the stream |
+| `jni/control/session.c`, `ws.c`, `msg.c`, `rows.c`, `clocksync.c`, `panel.c`, `banner.c`, `sound.c`, `addr.c`, `draw.c`, `text.c`, `texts.c` | Mission control's core, shared with Explorer3-RaspberryPi (same files): WebSocket protocol, messages, picture rows, clock, pages, banner, sound, address entry, drawing |
+| `jni/control/gamedata.c`, `font_8x16.c` | The game's tables (`game_tables.inc`); libogc2's 8 x 16 CP437 font (zlib licence, in the file) |
 | `java/.../Explorer3.java` | Game activity: gamepad, network, opening mission control |
 | `java/.../Screen.java`, `Game.java`, `AudioOut.java` | The game's display, native methods and sound |
 | `java/.../Control.java`, `ControlRenderer.java`, `ControlAudio.java` | Mission control's activity, display and sound |
-| `java/.../Network.java`, `Device.java` | Android's network, OUYA detection |
+| `java/.../Network.java`, `Device.java` | Android's network, device and gamepad detection |
+| `java/.../TouchInput.java`, `TouchButtons.java`, `TouchTarget.java` | Taps on the screen, transparent virtual buttons |
 | `tools/build.sh` | APK build |
-| `tools/*.sed` | Android changes to the copies of the game, its page and GC-Explorer3's texts |
+| `tools/*.sed`, `tools/page-texts.awk` | Android changes to the copies of the game and its page; mission control's texts |
 | `tools/icons.py` | Icons |
 
 ## 5. The game on Android
@@ -121,11 +128,11 @@ Game build settings, all outside the game: `-std=gnu++14` (the libc++ of r15c la
 | `@L@` | help (TAB) | L | L1 |
 | `@R@` | pause (Fn x 3) | R | R1 |
 
-The game's font (efontJA_12) has the × ○ □ △ signs. The APK holds both libraries; `Game.java` loads the device's. Examples: "× : commencer", "△ : répondre | □ : revoir | L : Morse", "R : reprendre"; "Cardputer seul" becomes "Solo", its subtitle "Tout le jeu sur cet appareil".
+The game's font (efontJA_12) has the × ○ □ △ signs. The APK also holds the touch library (`tools/touch-texts.sed`, section 7); `Game.java` loads the device's. Examples: "× : commencer", "△ : répondre | □ : revoir | L : Morse", "R : reprendre"; "Cardputer seul" becomes "Solo", its subtitle "Tout le jeu sur cet appareil".
 
 `tools/android-game.sed` hides "× : continuer" on the address screen while no mission control is connected. `tools/android-page.sed` adjusts the page served by the Crew: stream on port 8081, "Connecting to the crew…", rule 4 naming the device's button.
 
-## 7. Gamepad, on-screen keyboard, role choice
+## 7. Gamepad, touch, on-screen keyboard, role choice
 
 | Role | Cardputer key | Xperia Play | OUYA | Android code |
 |---|---|---|---|---|
@@ -151,11 +158,35 @@ The cursor always starts on ←. The keyboard closes with circle or triangle, af
 
 **Role choice** (`role_menu.cpp`): cross on "Multiplayer" opens, in the style of the game's language menu, "Crew" (cross goes on into the game) or "Mission control" (Java opens the `Control` activity in the game's language; circle, "Back to menu", returns).
 
+**Touch**, on every device. `TouchInput.java` only keeps taps on the screen (`SOURCE_TOUCHSCREEN`: the Xperia Play's touchpads stay ignored), with one finger that does not slide. The tap is brought to the game's 240 x 135 coordinates (`Screen.toGame()`), then `bridge::tap()` turns it into gamepad presses, given to the game one at a time. The positions come from the game's drawing functions; `tools/build.sh` checks they have not moved.
+
+| Screen | Tap |
+|---|---|
+| Menus (language, mode, role choice) | a line chooses it |
+| "× : continue" screens, title, end of game, pause | anywhere |
+| Morse | the lamp or the speaker plays the signal again; elsewhere, the on-screen keyboard opens |
+| Quiz | an answer |
+| Maze | a cell next to the astronaut |
+| Picross | a cell: it lights up or goes out |
+| Start-up code, coded keypad, on-screen keyboard | the keys |
+
+Android's Back key stays "back". With no gamepad at start (`Device.TOUCH`), the `libexplorer3_touch.so` library shows the texts for the finger ("Tap: start", "▶: watch again", "?: Morse", "←: back") and `TouchButtons.java` draws transparent buttons, only those useful on the current screen (`bridge::touchButtons()`):
+
+| Button | Place | When |
+|---|---|---|
+| ← back | top left | Wi-Fi and address screens, Morse code open |
+| × quit | bottom left | language, mode, title, end of game, pause |
+| ‖ pause / ▶ resume | top right | when the game can pause |
+| ? Morse code | middle right | Morse puzzles, in Solo |
+| ▶ again | bottom right | Morse puzzles |
+
+They sit in the black bands beside the picture when the screen is wider than it (at least 44 dp), otherwise over the picture's corners, more transparent. A button lights up under the finger.
+
 ## 8. Sound
 
 **Game**: `jni/audio.cpp` replaces the simulator's silent speaker with M5Unified's as the game uses it: 8 channels, one sound at a time per channel, sine notes (M5Unified's default tone), looped `playRaw` for the rumble, master and channel volumes. `AudioOut.java` ("sound" thread) asks for 22 050 Hz mono blocks and writes them to an `AudioTrack`. In multiplayer, as on the Cardputer, sounds go to mission control instead of the speaker.
 
-**Mission control**: GC-Explorer3's synthesis (`sound.c`, like the web page) at 48 kHz stereo, written by `ControlAudio.java`; the first sample is anchored at "now + the `AudioTrack` latency".
+**Mission control**: the synthesis of `sound.c` (like the web page) at 48 kHz stereo, written by `ControlAudio.java`; the first sample is anchored at "now + the `AudioTrack` latency".
 
 Both are silenced while the app is in the background.
 
@@ -172,19 +203,20 @@ The address screen shows `address:8080` (text and QR code). The game cannot go o
 
 ## 10. Multiplayer: Mission control
 
-`libexplorer3_control.so` = GC-Explorer3's pure code (WebSocket protocol, session, clock, picture rows, pages, banner, maze theme, sound, address entry), compiled as is from its folder, + `jni/control/`:
+`libexplorer3_control.so` = the core shared with Explorer3-RaspberryPi (WebSocket protocol, session, clock, picture rows, pages, banner, maze theme of message `M`, sound, address entry) + the Android part (`control.c`, `gl_draw.c`, `net.c`, `ui.c`):
 
 - **Search** (`net.c`, on its own thread): the 254 addresses of the device's /24, ports **81** (Cardputer) and **8081** (Android crew), in batches of 96 connections of 1.5 s; each open port is confirmed by `GET /sym.js` on 80 or 8080, with `Host` = the address (on its Explorer3 network the Cardputer redirects any other name to its page). One crew found: connects at once; several: list; none: search again or type the address (triangle).
-- **Address entry**: GC-Explorer3's (D-pad, L / R ±10), checked on both ports before connecting.
-- **Stream**: as on the GameCube. Screen copy, pages, banner, sound; reconnects by itself after a break or 30 s of silence; circle goes back to the search (shown for 5 s at the start).
-- Texts: GC-Explorer3's, except `tools/control-texts.sed` ("Connecting to the crew…", rule 4 "starts the game", version); Android's own screens in `ui.c`, without the word "Cardputer". Buttons are drawn as the device's own.
-- Settings: `control.conf` (GC-Explorer3's `explorer3.conf` format: last address, language).
+- **Address entry**: with the D-pad (L / R ±10), or with the finger on Android's number keyboard, already filled in; checked on both ports before connecting.
+- **Touch**: the screens note what can be tapped while they are drawn (`ui_tap()`): the button hints, the crews of the list, the address. With no gamepad at start: transparent back and quit buttons, framed words instead of buttons in the hints.
+- **Stream**: as in a web browser. Screen copy, pages, banner, sound; reconnects by itself after a break or 30 s of silence; circle goes back to the search (shown for 5 s at the start).
+- Texts: those of the game's page (`page_texts.inc`, section 3); Android's own screens in `ui.c`, without the word "Cardputer". Buttons are drawn as the device's own.
+- Settings: `control.conf`, lines `ip=` (the last crew that answered) and `lang=fr|en` (the crew's last language).
 
 ## 11. Sharp display
 
 **Game** (`Screen.java`, OpenGL ES 2): the 240 x 135 picture is enlarged a whole number of times k **without smoothing** into an intermediate texture, then brought to its final size (the largest 16:9 that fits, centred) **with smoothing**: only the edges of the big pixels soften. On an OUYA in 1080p, k = 8 and the final size is exact. On the Xperia Play (854 x 480), k = 3, then 720 x 405 → 853 x 480.
 
-**Mission control** (`gl_draw.c`): GC-Explorer3's 960 x 540 canvas is scaled to fit the screen. Rectangles and text are drawn at the screen's resolution (8 x 16 font enlarged 4 times, then smoothed); the copy of the crew's screen uses the same method as the game.
+**Mission control** (`gl_draw.c`): the 960 x 540 canvas of `draw.h` is scaled to fit the screen. Rectangles and text are drawn at the screen's resolution (8 x 16 font enlarged 4 times, then smoothed); the copy of the crew's screen uses the same method as the game.
 
 **Web page** (on the computer): the Cardputer's, which already fills the window and keeps pixels sharp (`image-rendering: pixelated`).
 
@@ -192,11 +224,13 @@ The address screen shows `address:8080` (text and QR code). The game cannot go o
 
 **Xperia Play** (user, 2026-10-10): game, sound, labels, keyboard; multiplayer as the Crew with a browser; Mission control facing a v2.2.2 Cardputer (picross cursor included); Start + Select; PlayStation Pocket launcher.
 
-**Emulator** (Android 5.1 x86 AVD, `tools/build.sh --x86`, keys through `adb shell input keyevent`, screenshots through `adb exec-out screencap`): the Solo game; on-screen keyboards; role choice; the Crew's server checked with a Python WebSocket client and headless Edge; Mission control facing GC-Explorer3's fake Cardputer (`tools/fake-cardputer.py`, with a small `/sym.js` server on port 80). In the emulator, addresses 10.0.2.1 to .7 all lead to the PC: the search finds the same fake Cardputer several times there.
+**Emulator** (Android 5.1 x86 AVD, `tools/build.sh --x86`, keys through `adb shell input keyevent`, screenshots through `adb exec-out screencap`): the Solo game; on-screen keyboards; role choice; the Crew's server checked with a Python WebSocket client and headless Edge; Mission control facing a fake Cardputer in Python (with a small `/sym.js` server on port 80). In the emulator, addresses 10.0.2.1 to .7 all lead to the PC: the search finds the same fake Cardputer several times there.
+
+**Version 3.0.0** (user, 2026-10-13): validated on the device (touch and the new Mission control).
 
 **Not tried yet**: the OUYA; an Android Mission control facing an Android Crew.
 
 ## 13. Next steps
 
 - Tests on the OUYA (planned) and with two Android devices together.
-- Any new version of the game or of GC-Explorer3: check that `tools/build.sh` passes (it stops if a change no longer applies), then run the tests again.
+- Any new version of the game: check that `tools/build.sh` passes (it stops if a change no longer applies), then run the tests again.

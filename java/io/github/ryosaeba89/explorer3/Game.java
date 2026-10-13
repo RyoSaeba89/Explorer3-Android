@@ -14,8 +14,9 @@ final class Game {
     static final int KEY_ENTER = 11, KEY_ESC = 12, KEY_DEL = 13, KEY_TAB = 14, KEY_SPACE = 15;
 
     static {
-        // One build of the game per device: its texts name that device's buttons
-        System.loadLibrary(Device.OUYA ? "explorer3_ouya" : "explorer3_xperia");
+        // One build of the game per device: its texts name that device's
+        // buttons, or the finger when there is no gamepad
+        System.loadLibrary(Device.OUYA ? "explorer3_ouya" : Device.TOUCH ? "explorer3_touch" : "explorer3_xperia");
     }
 
     private Game() {}
@@ -37,6 +38,12 @@ final class Game {
 
     /** One button or key press (codes above). */
     static native void press(int code);
+
+    /** A tap at (x, y) of the game's picture (W x H). */
+    static native void tap(int x, int y);
+
+    /** The transparent buttons useful on the current screen (TouchButtons bits). */
+    static native int touchButtons();
 
     /**
      * Copies the latest picture (RGB565, W x H) into dst, a direct buffer, if

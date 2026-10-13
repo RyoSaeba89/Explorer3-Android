@@ -9,6 +9,8 @@ import android.os.Handler;
 import android.os.Message;
 import android.os.Process;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
+import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 
@@ -24,11 +26,17 @@ import java.io.File;
  * </pre>
  * Xperia Play: Start = pause, Select = help, Start + Select = quit.
  * OUYA: Menu = quit.
+ * <p>
+ * Touch, on every device: the game's screen itself is tapped (jni/bridge.inc).
+ * Without a gamepad at start, transparent buttons do the rest (TouchButtons).
  */
-public final class Explorer3 extends Activity implements Runnable, Handler.Callback {
+public final class Explorer3 extends Activity
+        implements Runnable, Handler.Callback, View.OnTouchListener, TouchTarget {
     private static final int KEYCODE_ESCAPE = 111;  // API 11
 
     private GLSurfaceView view;
+    private Screen screen;
+    private TouchInput touch;
     private AudioOut audio;
     private boolean startDown, selectDown;
     private boolean comboUsed;  // Start + Select pressed: neither acts alone
@@ -43,10 +51,40 @@ public final class Explorer3 extends Activity implements Runnable, Handler.Callb
         Game.start(new File(getFilesDir(), "settings.txt").getPath());
         audio = AudioOut.start();
         setVolumeControlStream(AudioManager.STREAM_MUSIC);  // volume buttons set the game's volume
+        TouchButtons buttons = Device.TOUCH ? new TouchButtons(getResources().getDisplayMetrics().density) : null;
+        screen = new Screen(handler, buttons);
+        touch = new TouchInput(this, this, buttons);
         view = new GLSurfaceView(this);
         view.setEGLContextClientVersion(2);
-        view.setRenderer(new Screen(handler));
+        view.setRenderer(screen);
+        view.setOnTouchListener(this);
         setContentView(view);
+    }
+
+    @Override
+    public boolean onTouch(View v, MotionEvent ev) {
+        return touch.onTouch(ev);
+    }
+
+    /** A tap on the game's picture; elsewhere (black bands) nothing. */
+    @Override
+    public void tapped(float x, float y) {
+        int[] p = screen.toGame(x, y);
+        if (p != null) {
+            Game.tap(p[0], p[1]);
+        }
+    }
+
+    @Override
+    public void buttonTapped(int bit) {
+        switch (bit) {
+            case TouchButtons.BACK: Game.press(Game.BACK); break;
+            case TouchButtons.QUIT: finish(); break;
+            case TouchButtons.PAUSE: Game.press(Game.PAUSE); break;
+            case TouchButtons.HELP: Game.press(Game.HELP); break;
+            case TouchButtons.REPLAY: Game.press(Game.SPACE); break;
+            default: break;
+        }
     }
 
     @Override

@@ -1,28 +1,37 @@
-// Turns gamepad buttons and keyboard keys into Cardputer key presses. Java
-// queues codes from its own thread; the game thread reads them in
+// Turns gamepad buttons, keyboard keys and taps into Cardputer key presses.
+// Java queues codes from its own thread; the game thread reads them in
 // Keyboard_Class::updateKeysState(), so the on-screen keyboard and the game's
 // state (bridge.h) are only ever touched by the game thread.
 //
-// On-screen keyboard: it opens with the top face button where the screen
-// expects a letter (Morse puzzles, quiz), and by itself for the start-up code
-// and the coded keypad. It closes after an answer, when the screen changes,
-// and with the back button.
+// On-screen keyboard: it opens with the top face button (or a tap) where the
+// screen expects a letter (Morse puzzles, quiz), and by itself for the
+// start-up code and the coded keypad. It closes after an answer, when the
+// screen changes, and with the back button.
+//
+// A tap becomes the presses that do the same with the gamepad (bridge::tap),
+// given to the game one at a time so that each sees the previous one done.
 #include "input.h"
 
 #include <M5Cardputer.h>
 
+#include <atomic>
 #include <deque>
 #include <mutex>
 
 #include "bridge.h"
+#include "display.h"
 #include "onscreen_keyboard.h"
 #include "role_menu.h"
 
 namespace {
 
+constexpr int TAP = 1 << 20;   // a tap in the codes from Java: TAP | y << 8 | x
+
 std::mutex codeLock;
 std::deque<int> codes;          // from Java
 std::deque<KeysState> presses;  // for the game, game thread only
+std::deque<int> tapCodes;       // what a tap stands for, applied one at a time
+std::atomic<unsigned> buttonsNow(0);  // input::TouchButton bits, read by Java
 
 uint32_t lastScreen = 0;
 bool dismissed = false;  // keyboard closed by the player on this screen: no reopening by itself
@@ -137,7 +146,52 @@ bool roleButton(int code) {
     return true;
 }
 
+void handle(int code);
+
+// A tap: on the role menu or the on-screen keyboard, the choice or key
+// touched; elsewhere what the game's screen makes of it (bridge::tap)
+void handleTap(int x, int y) {
+    if (role::isOpen()) {
+        int i = role::choiceAt(x, y);
+        if (i >= 0) {
+            if (i != role::selected()) {
+                role::move(1);
+            }
+            handle(input::CONFIRM);
+        }
+        return;
+    }
+    if (osk::isOpen()) {
+        if (osk::selectAt(x, y)) {
+            handle(input::CONFIRM);
+            return;
+        }
+        if (osk::covers(x, y)) {
+            return;
+        }
+    }
+    bool codeKeyboard = osk::isOpen() && !answers(osk::mode());
+    for (int code : bridge::tap(x, y)) {
+        if (codeKeyboard && code == input::KEYBOARD) {
+            continue;  // the keyboard of a code stays open: its keys are needed
+        }
+        tapCodes.push_back(code);
+    }
+}
+
+// One code of a tap
+void applyTap(int code) {
+    if (code > ' ' && osk::isOpen() && answers(osk::mode())) {
+        osk::close();  // an answer touched on the game's screen (quiz)
+    }
+    handle(code);
+}
+
 void handle(int code) {
+    if (code & TAP) {
+        handleTap(code & 0xff, (code >> 8) & 0xff);
+        return;
+    }
     if (roleButton(code) || keyboardButton(code)) {
         return;
     }
@@ -193,6 +247,7 @@ void followScreen() {
         lastScreen = screen;
         dismissed = false;
         osk::close();
+        tapCodes.clear();  // a tap meant for the previous screen
         if (bridge::wifiList()) {
             // The game's Wi-Fi list (and its "create the Explorer3 network")
             // has no place on Android: back to the mode menu at once
@@ -217,6 +272,16 @@ void push(int code) {
     codes.push_back(code);
 }
 
+void tap(int x, int y) {
+    if (x >= 0 && x < display::W && y >= 0 && y < display::H) {
+        push(TAP | y << 8 | x);
+    }
+}
+
+unsigned touchButtons() {
+    return buttonsNow;
+}
+
 }  // namespace input
 
 // One press per loop turn, followed by a "released" turn, like the real keyboard
@@ -230,6 +295,20 @@ void Keyboard_Class::updateKeysState() {
     for (int code : todo) {
         handle(code);
     }
+    // The next code of a tap once the game has taken the previous one
+    if (presses.empty() && !_release && !tapCodes.empty()) {
+        int code = tapCodes.front();
+        tapCodes.pop_front();
+        applyTap(code);
+    }
+    unsigned b = bridge::touchButtons();
+    if (role::isOpen()) {
+        b = (b & ~input::TB_QUIT) | input::TB_BACK;
+    }
+    if (osk::isOpen()) {
+        b |= input::TB_BACK;
+    }
+    buttonsNow = b;
     if (_release) {
         _release = false;
         _change = true;

@@ -9,6 +9,7 @@ GFX_DIR ?= $(GAME_DIR)/.pio/libdeps/simulateur/M5GFX/src
 # per device; Java loads the right one.
 SRC_XPERIA ?= $(GAME_DIR)/src
 SRC_OUYA ?= $(GAME_DIR)/src
+SRC_TOUCH ?= $(GAME_DIR)/src
 
 ANDROID_SOURCES := game.cpp audio.cpp input.cpp onscreen_keyboard.cpp role_menu.cpp display_m5gfx.cpp mirror_android.cpp
 GFX_SOURCES := \
@@ -50,21 +51,28 @@ LOCAL_LDLIBS := -llog
 LOCAL_LDFLAGS := $(COMMON_LDFLAGS)
 include $(BUILD_SHARED_LIBRARY)
 
-# ---- Mission control: GC-Explorer3's pure code (protocol, pages, banner,
-# sound), compiled unchanged from its folder, with its texts adapted by
-# tools/build.sh (CONTROL_TEXTS), and the Android part in control/.
-GC_DIR ?= $(abspath $(LOCAL_PATH)/../..)/GC-Explorer3
-CONTROL_TEXTS ?= $(GC_DIR)/source
-GC_SOURCES := addr banner base64 clocksync config draw gamedata msg netui panel rows session sha1 sound \
-  symbols text ws
+# ---- No gamepad at start: texts for the finger (user's choice)
+include $(CLEAR_VARS)
+LOCAL_MODULE := explorer3_touch
+LOCAL_SRC_FILES := $(ANDROID_SOURCES) $(SRC_TOUCH)/main.cpp $(GFX_SOURCES)
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/include $(LOCAL_PATH) $(GAME_DIR)/sim/include $(SRC_TOUCH) $(GFX_DIR)
+LOCAL_CFLAGS := $(COMMON_CFLAGS) -DEXPLORER3_TOUCH
+LOCAL_CPPFLAGS := $(COMMON_CPPFLAGS)
+LOCAL_LDLIBS := -llog
+LOCAL_LDFLAGS := $(COMMON_LDFLAGS)
+include $(BUILD_SHARED_LIBRARY)
+
+# ---- Mission control: the protocol, pages, banner and sound of the web
+# page (control/, the same core as Explorer3-RaspberryPi's src/control/), the
+# Android part (control.c, gl_draw.c, net.c, ui.c), and what tools/build.sh
+# takes from the game (CONTROL_GEN: page_texts.inc, game_tables.inc).
+CONTROL_GEN ?= $(LOCAL_PATH)/control
+CONTROL_SOURCES := addr banner clocksync control draw font_8x16 gamedata gl_draw msg net panel rows session sound text texts ui ws
 include $(CLEAR_VARS)
 LOCAL_MODULE := explorer3_control
-LOCAL_SRC_FILES := control/control.c control/gl_draw.c control/net.c control/ui.c \
-  $(foreach f,$(GC_SOURCES),$(GC_DIR)/source/$(f).c) \
-  $(CONTROL_TEXTS)/texts.c \
-  $(GC_DIR)/extern/font/console_font_8x16.c
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/control $(GC_DIR)/source
-LOCAL_CFLAGS := -std=gnu11 -O2 -fvisibility=hidden -ffunction-sections -fdata-sections -Wno-everything
+LOCAL_SRC_FILES := $(foreach f,$(CONTROL_SOURCES),control/$(f).c)
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/control $(CONTROL_GEN)
+LOCAL_CFLAGS := -std=gnu11 -O2 -fvisibility=hidden -ffunction-sections -fdata-sections -Wall
 LOCAL_LDLIBS := -lGLESv2 -llog -lm
 LOCAL_LDFLAGS := $(COMMON_LDFLAGS)
 include $(BUILD_SHARED_LIBRARY)

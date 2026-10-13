@@ -4,6 +4,7 @@
 // changing a line of the game. Game thread only.
 #pragma once
 #include <cstdint>
+#include <vector>
 
 namespace bridge {
 
@@ -37,5 +38,15 @@ bool multiplayerSelected();
 
 // Game language: 0 French, 1 English
 int language();
+
+// Touch (user's choice: the game itself is touched). The input codes
+// (input.h) that a tap at (x, y) of the game's picture stands for, to apply
+// one after the other; none where a tap does nothing. The on-screen keyboard
+// and the role menu are input.cpp's.
+std::vector<int> tap(int x, int y);
+
+// input::TouchButton bits useful on this screen, apart from what the
+// on-screen keyboard and the role menu add (input.cpp)
+unsigned touchButtons();
 
 }  // namespace bridge

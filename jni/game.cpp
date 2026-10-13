@@ -213,6 +213,16 @@ JNI_FN(void, press)(JNIEnv *, jclass, jint code) {
     input::push(code);
 }
 
+// A tap at (x, y) of the game's picture (240 x 135)
+JNI_FN(void, tap)(JNIEnv *, jclass, jint x, jint y) {
+    input::tap(x, y);
+}
+
+// Transparent buttons useful on the current screen (input::TouchButton bits)
+JNI_FN(jint, touchButtons)(JNIEnv *, jclass) {
+    return (jint)input::touchButtons();
+}
+
 // Copies the latest picture into dst (direct buffer of 240 x 135 x 2 bytes)
 // if it is newer than "seen"; returns the picture's number.
 JNI_FN(jint, picture)(JNIEnv *env, jclass, jobject dst, jint seen) {
