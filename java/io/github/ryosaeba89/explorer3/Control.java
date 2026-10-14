@@ -47,8 +47,11 @@ public final class Control extends Activity implements Runnable, Handler.Callbac
         System.loadLibrary("explorer3_control");
     }
 
-    /** Once per process: settings file, language before the crew's, buttons shown (Device.BUTTONS). */
+    /** Once per process: settings file, language before the crew's, buttons shown (Device.style()). */
     static native void start(String settings, int lang, int buttons);
+
+    /** The device used last (Device.style()): the hints show its buttons. */
+    static native void setButtons(int style);
 
     /** A tap at (x, y) of the surface, in pixels. */
     static native void touch(float x, float y);
@@ -89,10 +92,11 @@ public final class Control extends Activity implements Runnable, Handler.Callbac
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN
                 | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         lang = getIntent().getIntExtra(EXTRA_LANG, Locale.getDefault().getLanguage().equals("fr") ? 0 : 1);
-        start(new File(getFilesDir(), "control.conf").getPath(), lang, Device.BUTTONS);
+        start(new File(getFilesDir(), "control.conf").getPath(), lang, Device.style());
+        setButtons(Device.style());
         audio = ControlAudio.start();
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
-        TouchButtons buttons = Device.TOUCH ? new TouchButtons(getResources().getDisplayMetrics().density) : null;
+        TouchButtons buttons = new TouchButtons(getResources().getDisplayMetrics().density);
         touch = new TouchInput(this, this, buttons);
         view = new GLSurfaceView(this);
         view.setEGLContextClientVersion(2);
@@ -103,6 +107,9 @@ public final class Control extends Activity implements Runnable, Handler.Callbac
 
     @Override
     public boolean onTouch(View v, MotionEvent ev) {
+        if (Device.touched(ev)) {
+            setButtons(Device.TOUCH);
+        }
         return touch.onTouch(ev);
     }
 
@@ -200,6 +207,9 @@ public final class Control extends Activity implements Runnable, Handler.Callbac
 
     @Override
     public boolean onKeyDown(int code, KeyEvent ev) {
+        if (Device.used(ev)) {
+            setButtons(Device.style());
+        }
         if (code == KeyEvent.KEYCODE_BUTTON_START || code == KeyEvent.KEYCODE_BUTTON_SELECT) {
             if (code == KeyEvent.KEYCODE_BUTTON_START) {
                 startDown = true;
@@ -258,9 +268,15 @@ public final class Control extends Activity implements Runnable, Handler.Callbac
             case KEYCODE_ESCAPE:
                 return BACK;
             case KeyEvent.KEYCODE_BUTTON_Y:     // Xperia Play triangle, OUYA Y
+            case KeyEvent.KEYCODE_TAB:          // keyboard: Tab, - and + as on the Pi
                 return KEYBOARD;
-            case KeyEvent.KEYCODE_BUTTON_L1: return L;
-            case KeyEvent.KEYCODE_BUTTON_R1: return R;
+            case KeyEvent.KEYCODE_BUTTON_L1:
+            case KeyEvent.KEYCODE_MINUS:
+                return L;
+            case KeyEvent.KEYCODE_BUTTON_R1:
+            case KeyEvent.KEYCODE_PLUS:
+            case KeyEvent.KEYCODE_EQUALS:
+                return R;
             default: return 0;
         }
     }

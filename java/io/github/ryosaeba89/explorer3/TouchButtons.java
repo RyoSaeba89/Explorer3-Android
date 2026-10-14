@@ -15,9 +15,9 @@ import java.nio.FloatBuffer;
 
 /**
  * Transparent buttons for what has no place on the screen: back, quit,
- * pause / resume, Morse code, signal again. Only when no gamepad was found at
- * start (Device.TOUCH), and only those useful on the current screen (user's
- * choice). They sit in the black bands beside the picture when the screen is
+ * pause / resume, Morse code, signal again. Only while the finger is used
+ * (Device.TOUCH, user's choice E1.1), and only those useful on the current
+ * screen (user's choice). They sit in the black bands beside the picture when the screen is
  * wider than it, otherwise over the picture's corners, more transparent:
  * <pre>
  *   back (←)        pause (‖) / resume (▶)

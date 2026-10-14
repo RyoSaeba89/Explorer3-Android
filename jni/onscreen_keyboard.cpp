@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "display.h"
+#include "labels.h"
 
 namespace osk {
 namespace {
@@ -210,11 +211,8 @@ void draw(uint16_t *picture) {
         int y = top + k.row * CELL_H;
         int w = k.span * CELL_W - 2;
         int kh = CELL_H - 2;
-#if defined(EXPLORER3_TOUCH)
-        bool sel = false;  // no gamepad: no cursor, the keys are touched
-#else
-        bool sel = (int)i == cursor;
-#endif
+        // with the finger: no cursor, the keys are touched
+        bool sel = (int)i == cursor && labels::style() != labels::TOUCH;
         uint16_t ink = sel ? back : text;
         if (sel) {
             sprite.fillRect(x, y, w, kh, yellow);

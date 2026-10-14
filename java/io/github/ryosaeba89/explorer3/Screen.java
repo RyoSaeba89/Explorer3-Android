@@ -48,7 +48,7 @@ final class Screen implements GLSurfaceView.Renderer {
     static final int MSG_OPEN_CONTROL = 1;
 
     private final Handler activity;
-    private final TouchButtons buttons;  // null with a gamepad
+    private final TouchButtons buttons;  // shown while the finger is used (Device.TOUCH)
     private final ByteBuffer pixels =
             ByteBuffer.allocateDirect(Game.W * Game.H * 2).order(ByteOrder.nativeOrder());
     private final FloatBuffer positions = floats(POSITIONS);
@@ -169,9 +169,7 @@ final class Screen implements GLSurfaceView.Renderer {
         } else {
             draw(gameTexture, gameCoords);
         }
-        if (buttons != null) {
-            buttons.draw(Game.touchButtons());
-        }
+        buttons.draw(Device.style() == Device.TOUCH ? Game.touchButtons() : 0);
     }
 
     private void draw(int texture, FloatBuffer coords) {

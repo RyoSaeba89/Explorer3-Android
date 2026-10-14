@@ -3,7 +3,46 @@
 // Appended to the copy of main.cpp by tools/build.sh (see jni/bridge.h).
 // Only reads the game's state.
 #include "bridge.h"
+#include "control_link.h"
 #include "input.h"
+#include "labels.h"
+#include "textes_ouya.h"
+#include "textes_ps.h"
+#include "textes_touch.h"
+#include "textes_xbox.h"
+#include "textes_xperia.h"
+
+#include <unordered_map>
+
+namespace {
+
+// tr(): the same text in the version of the device used last (labels.h).
+// The six versions of textes.h declare the same texts in the same order;
+// texts_table.inc (tools/build.sh) lists them side by side.
+struct Versions {
+    const char *const *v[labels::COUNT];
+};
+
+std::unordered_map<const void *, Versions> buildVersions() {
+    std::unordered_map<const void *, Versions> m;
+    auto add = [&](const char *const *k, const char *const *xperia, const char *const *ouya, const char *const *ps,
+                   const char *const *xbox, const char *const *touch) {
+        m[k] = {{k, xperia, ouya, ps, xbox, touch}};
+    };
+#include "texts_table.inc"
+    return m;
+}
+
+const char *padText(Tx &t, int l) {
+    static const std::unordered_map<const void *, Versions> versions = buildVersions();
+    auto it = versions.find(&t[0]);
+    if (it == versions.end()) {
+        return t[l];
+    }
+    return it->second.v[labels::style()][l];
+}
+
+}  // namespace
 
 #include <cstdlib>
 
@@ -40,10 +79,6 @@ bool wifiList() {
 
 bool waitingForControl() {
     return state == St::Address && mirror::clientCount() == 0;
-}
-
-bool multiplayerSelected() {
-    return state == St::Mode && modeSel == 1 && !paused;
 }
 
 int language() {
@@ -173,6 +208,16 @@ std::vector<int> tap(int x, int y) {
                 out.push_back(input::CONFIRM);
             }
             break;
+        case St::Role:
+            // drawRole: drawChoices(…, 2, roleSel, 26, 38, 6)
+            i = choiceAt(x, y, 2, 26, 38, 6);
+            if (i >= 0) {
+                if (i != roleSel) {
+                    out.push_back(input::DOWN);
+                }
+                out.push_back(input::CONFIRM);
+            }
+            break;
         case St::Mode:
             // drawMode: drawChoices(…, 3, modeSel, 31, 28, 2); up and down go round
             i = choiceAt(x, y, 3, 31, 28, 2);
@@ -228,6 +273,7 @@ unsigned touchButtons() {
         case St::Password:
         case St::Connecting:
         case St::Address:
+        case St::Role:
             b |= input::TB_BACK;
             break;
         case St::Lang:
@@ -247,3 +293,37 @@ unsigned touchButtons() {
 }
 
 }  // namespace bridge
+
+// ---------------------------------------------------------------- mission control
+// The game's mission control role: once the network is up (the game's
+// startControl()), the Control activity takes over; the game waits behind
+// it and goes back to its role menu when it closes.
+namespace mirror {
+void stopServer();  // mirror_android.cpp
+}
+
+namespace {
+namespace controle {
+
+void start() {
+    mirror::stopServer();  // a crew's page server from an earlier game: off
+    control_link::request();
+}
+
+bool key(const KeysState &) {
+    return true;
+}
+
+bool update(uint32_t) {
+    return !control_link::finished();
+}
+
+void draw(uint32_t) {
+    canvas.fillScreen(C_SPACE);
+}
+
+void stop() {
+}
+
+}  // namespace controle
+}  // namespace

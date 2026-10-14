@@ -33,8 +33,9 @@ enum {
     UI_ERROR,
 };
 
-/* Buttons the hints show (Device.BUTTONS in Java) */
-enum { PAD_PLAYSTATION, PAD_OUYA, PAD_TOUCH };
+/* Buttons the hints show: those of the device used last (Device.java; the
+ * order of labels::Style, jni/labels.h) */
+enum { PAD_KEYBOARD, PAD_XPERIA, PAD_OUYA, PAD_PLAYSTATION, PAD_XBOX, PAD_TOUCH };
 
 /* What a tap on a screen does (ui_tap) */
 enum {

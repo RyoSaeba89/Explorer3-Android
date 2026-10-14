@@ -11,12 +11,11 @@ final class Game {
     // From 33 on, a printable character.
     static final int UP = 1, DOWN = 2, LEFT = 3, RIGHT = 4;
     static final int CONFIRM = 5, BACK = 6, KEYBOARD = 7, SPACE = 8, HELP = 9, PAUSE = 10;
-    static final int KEY_ENTER = 11, KEY_ESC = 12, KEY_DEL = 13, KEY_TAB = 14, KEY_SPACE = 15;
+    static final int KEY_ENTER = 11, KEY_ESC = 12, KEY_DEL = 13, KEY_TAB = 14, KEY_SPACE = 15, KEY_CTRL = 16;
 
     static {
-        // One build of the game per device: its texts name that device's
-        // buttons, or the finger when there is no gamepad
-        System.loadLibrary(Device.OUYA ? "explorer3_ouya" : Device.TOUCH ? "explorer3_touch" : "explorer3_xperia");
+        // The game with the texts of every device: setStyle() picks them
+        System.loadLibrary("explorer3");
     }
 
     private Game() {}
@@ -30,8 +29,14 @@ final class Game {
     /** Mixes the game's sound into out (AudioOut.RATE, mono). */
     static native void mix(short[] out);
 
+    /** The device used last (Device.KEYBOARD ... Device.TOUCH): the texts name its buttons. */
+    static native void setStyle(int style);
+
     /** True once when mission control was chosen in the role menu (after "Multiplayer"). */
     static native boolean controlRequested();
+
+    /** Back from mission control: the game returns to its role menu. */
+    static native void controlClosed();
 
     /** The game's language: 0 French, 1 English. */
     static native int language();

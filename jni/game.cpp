@@ -18,7 +18,8 @@
 #include "network.h"
 #include "onscreen_keyboard.h"
 #include "bridge.h"
-#include "role_menu.h"
+#include "control_link.h"
+#include "labels.h"
 
 void setup();
 void loop();
@@ -152,7 +153,6 @@ void publish() {
     std::lock_guard<std::mutex> g(pictureLock);
     copy(picture);
     lastLanguage = bridge::language();
-    role::draw(picture, lastLanguage);
     osk::draw(picture);
     pictureCount++;
 }
@@ -199,14 +199,24 @@ JNI_FN(void, setNetwork)(JNIEnv *env, jclass, jstring name, jstring ip) {
     env->ReleaseStringUTFChars(ip, i);
 }
 
-// Mission control was chosen in the role menu: true once
+// Mission control was chosen in the game's role menu and the network is up: true once
 JNI_FN(jboolean, controlRequested)(JNIEnv *, jclass) {
-    return role::controlRequested();
+    return control_link::requested();
+}
+
+// Back from the Control activity: the game goes back to its role menu
+JNI_FN(void, controlClosed)(JNIEnv *, jclass) {
+    control_link::finish();
 }
 
 // Game language, for mission control until the crew sends its own
 JNI_FN(jint, language)(JNIEnv *, jclass) {
     return lastLanguage;
+}
+
+// The device used last (Game.STYLE_...): its texts from now on
+JNI_FN(void, setStyle)(JNIEnv *, jclass, jint style) {
+    labels::setStyle(style);
 }
 
 JNI_FN(void, press)(JNIEnv *, jclass, jint code) {

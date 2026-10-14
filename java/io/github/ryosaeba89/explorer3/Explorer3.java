@@ -27,12 +27,14 @@ import java.io.File;
  * Xperia Play: Start = pause, Select = help, Start + Select = quit.
  * OUYA: Menu = quit.
  * <p>
- * Touch, on every device: the game's screen itself is tapped (jni/bridge.inc).
- * Without a gamepad at start, transparent buttons do the rest (TouchButtons).
+ * Touch, on every device: the game's screen itself is tapped (jni/bridge.inc);
+ * while the finger is used, transparent buttons do the rest (TouchButtons).
+ * The texts name the keys of the device used last (Device.java).
  */
 public final class Explorer3 extends Activity
         implements Runnable, Handler.Callback, View.OnTouchListener, TouchTarget {
     private static final int KEYCODE_ESCAPE = 111;  // API 11
+    private static final int KEYCODE_CTRL_LEFT = 113, KEYCODE_CTRL_RIGHT = 114;  // API 11
 
     private GLSurfaceView view;
     private Screen screen;
@@ -40,6 +42,7 @@ public final class Explorer3 extends Activity
     private AudioOut audio;
     private boolean startDown, selectDown;
     private boolean comboUsed;  // Start + Select pressed: neither acts alone
+    private boolean controlOpen;  // the Control activity was opened from here
     private final Handler handler = new Handler(this);
 
     @Override
@@ -49,9 +52,10 @@ public final class Explorer3 extends Activity
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN
                 | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         Game.start(new File(getFilesDir(), "settings.txt").getPath());
+        Game.setStyle(Device.style());
         audio = AudioOut.start();
         setVolumeControlStream(AudioManager.STREAM_MUSIC);  // volume buttons set the game's volume
-        TouchButtons buttons = Device.TOUCH ? new TouchButtons(getResources().getDisplayMetrics().density) : null;
+        TouchButtons buttons = new TouchButtons(getResources().getDisplayMetrics().density);
         screen = new Screen(handler, buttons);
         touch = new TouchInput(this, this, buttons);
         view = new GLSurfaceView(this);
@@ -63,6 +67,9 @@ public final class Explorer3 extends Activity
 
     @Override
     public boolean onTouch(View v, MotionEvent ev) {
+        if (Device.touched(ev)) {
+            Game.setStyle(Device.TOUCH);  // texts for the finger, transparent buttons
+        }
         return touch.onTouch(ev);
     }
 
@@ -101,14 +108,19 @@ public final class Explorer3 extends Activity
         view.onResume();
         handler.post(this);
         audio.setMuted(false);
+        if (controlOpen) {
+            controlOpen = false;
+            Game.controlClosed();  // back from mission control: the game's role menu
+        }
     }
 
-    /** Mission control chosen in the role menu: opens it; Back there returns here. */
+    /** Mission control chosen in the game's role menu: opens it; Back there returns here. */
     @Override
     public boolean handleMessage(Message m) {
         if (m.what == Screen.MSG_OPEN_CONTROL) {
             Intent i = new Intent(this, Control.class);
             i.putExtra(Control.EXTRA_LANG, Game.language());
+            controlOpen = true;
             startActivity(i);
         }
         return true;
@@ -137,6 +149,9 @@ public final class Explorer3 extends Activity
 
     @Override
     public boolean onKeyDown(int code, KeyEvent ev) {
+        if (Device.used(ev)) {
+            Game.setStyle(Device.style());  // the texts name this device's keys from now on
+        }
         if (code == KeyEvent.KEYCODE_BUTTON_START || code == KeyEvent.KEYCODE_BUTTON_SELECT) {
             if (code == KeyEvent.KEYCODE_BUTTON_START) {
                 startDown = true;
@@ -211,6 +226,9 @@ public final class Explorer3 extends Activity
             case KeyEvent.KEYCODE_DEL: return Game.KEY_DEL;
             case KeyEvent.KEYCODE_TAB: return Game.KEY_TAB;
             case KeyEvent.KEYCODE_SPACE: return Game.KEY_SPACE;
+            case KEYCODE_CTRL_LEFT:
+            case KEYCODE_CTRL_RIGHT:
+                return Game.KEY_CTRL;  // Fn: 3 times for the pause
             default:
                 break;
         }

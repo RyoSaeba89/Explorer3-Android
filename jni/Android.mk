@@ -4,14 +4,13 @@ LOCAL_PATH := $(call my-dir)
 # PlatformIO downloaded for its simulator (pio run -e simulateur).
 GAME_DIR ?= $(abspath $(LOCAL_PATH)/../..)/Escape-Game-Cardputer
 GFX_DIR ?= $(GAME_DIR)/.pio/libdeps/simulateur/M5GFX/src
-# Copies of the game sources made by tools/build.sh: Android texts, with the
-# buttons of each device, and bridge.inc appended to main.cpp. One library
-# per device; Java loads the right one.
-SRC_XPERIA ?= $(GAME_DIR)/src
-SRC_OUYA ?= $(GAME_DIR)/src
-SRC_TOUCH ?= $(GAME_DIR)/src
+# The copy of the game sources made by tools/build.sh: Android texts in six
+# versions (keyboard, Xperia Play, OUYA, PlayStation, Xbox, finger), and
+# bridge.inc appended to main.cpp.
+SRC_GAME ?= $(GAME_DIR)/src
 
-ANDROID_SOURCES := game.cpp audio.cpp input.cpp onscreen_keyboard.cpp role_menu.cpp display_m5gfx.cpp mirror_android.cpp
+ANDROID_SOURCES := game.cpp audio.cpp input.cpp onscreen_keyboard.cpp control_link.cpp labels.cpp display_m5gfx.cpp \
+  mirror_android.cpp
 GFX_SOURCES := \
   $(wildcard $(GFX_DIR)/lgfx/v1/*.cpp) \
   $(GFX_DIR)/lgfx/v1/panel/Panel_M5HDMI.cpp \
@@ -28,35 +27,13 @@ COMMON_CFLAGS := -DLGFX_LINUX_FB -DM5GFX_BOARD=board_M5Cardputer \
 COMMON_CPPFLAGS := -std=gnu++14 -include cstdlib -include cmath
 COMMON_LDFLAGS := -Wl,--no-undefined -Wl,--gc-sections -Wl,--exclude-libs,ALL
 
-# ---- Xperia Play: PlayStation buttons in the texts
+# ---- The game, with the texts of every device (tools/build.sh)
 include $(CLEAR_VARS)
-LOCAL_MODULE := explorer3_xperia
-LOCAL_SRC_FILES := $(ANDROID_SOURCES) $(SRC_XPERIA)/main.cpp $(GFX_SOURCES)
+LOCAL_MODULE := explorer3
+LOCAL_SRC_FILES := $(ANDROID_SOURCES) $(SRC_GAME)/main.cpp $(GFX_SOURCES)
 # include/ first: it replaces the simulator's Preferences.h
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/include $(LOCAL_PATH) $(GAME_DIR)/sim/include $(SRC_XPERIA) $(GFX_DIR)
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/include $(LOCAL_PATH) $(GAME_DIR)/sim/include $(SRC_GAME) $(GFX_DIR)
 LOCAL_CFLAGS := $(COMMON_CFLAGS)
-LOCAL_CPPFLAGS := $(COMMON_CPPFLAGS)
-LOCAL_LDLIBS := -llog
-LOCAL_LDFLAGS := $(COMMON_LDFLAGS)
-include $(BUILD_SHARED_LIBRARY)
-
-# ---- OUYA: O U Y A buttons in the texts
-include $(CLEAR_VARS)
-LOCAL_MODULE := explorer3_ouya
-LOCAL_SRC_FILES := $(ANDROID_SOURCES) $(SRC_OUYA)/main.cpp $(GFX_SOURCES)
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/include $(LOCAL_PATH) $(GAME_DIR)/sim/include $(SRC_OUYA) $(GFX_DIR)
-LOCAL_CFLAGS := $(COMMON_CFLAGS) -DEXPLORER3_OUYA
-LOCAL_CPPFLAGS := $(COMMON_CPPFLAGS)
-LOCAL_LDLIBS := -llog
-LOCAL_LDFLAGS := $(COMMON_LDFLAGS)
-include $(BUILD_SHARED_LIBRARY)
-
-# ---- No gamepad at start: texts for the finger (user's choice)
-include $(CLEAR_VARS)
-LOCAL_MODULE := explorer3_touch
-LOCAL_SRC_FILES := $(ANDROID_SOURCES) $(SRC_TOUCH)/main.cpp $(GFX_SOURCES)
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/include $(LOCAL_PATH) $(GAME_DIR)/sim/include $(SRC_TOUCH) $(GFX_DIR)
-LOCAL_CFLAGS := $(COMMON_CFLAGS) -DEXPLORER3_TOUCH
 LOCAL_CPPFLAGS := $(COMMON_CPPFLAGS)
 LOCAL_LDLIBS := -llog
 LOCAL_LDFLAGS := $(COMMON_LDFLAGS)
@@ -67,7 +44,8 @@ include $(BUILD_SHARED_LIBRARY)
 # Android part (control.c, gl_draw.c, net.c, ui.c), and what tools/build.sh
 # takes from the game (CONTROL_GEN: page_texts.inc, game_tables.inc).
 CONTROL_GEN ?= $(LOCAL_PATH)/control
-CONTROL_SOURCES := addr banner clocksync control draw font_8x16 gamedata gl_draw msg net panel rows session sound text texts ui ws
+CONTROL_SOURCES := addr banner clocksync control draw font_8x16 gamedata gl_draw msg net panel panel_draw rows session sound \
+  text texts ui ws
 include $(CLEAR_VARS)
 LOCAL_MODULE := explorer3_control
 LOCAL_SRC_FILES := $(foreach f,$(CONTROL_SOURCES),control/$(f).c)

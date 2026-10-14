@@ -24,6 +24,7 @@
 #include <deque>
 #include <mutex>
 #include <string>
+#include <thread>
 
 #include "display.h"
 #include "network.h"
@@ -64,10 +65,12 @@ namespace {
 constexpr int HTTP_PORT = 8080;
 constexpr int WS_PORT = 8081;
 constexpr int MAX_CLIENTS = 5;            // as on the Cardputer
+constexpr int MAX_PAGE_THREADS = 8;       // page requests served at once
 constexpr uint32_t FRAME_MS = 40;         // 25 pictures/s at most
 constexpr uint32_t CLOCK_MS = 250;        // game clock for the sound
 constexpr uint32_t PING_MS = 5000;        // heartbeat, as on the Cardputer
 constexpr int MISSED_PONGS = 2;
+constexpr uint32_t HANDSHAKE_MS = 10000;  // to ask for the stream once connected
 constexpr size_t FRAME_BUF = 12 * 1024;   // a picture may go in several messages
 constexpr int MAX_H = 135;
 
@@ -76,6 +79,7 @@ struct Client {
     bool open = false;  // handshake done
     std::string in;     // bytes received, not yet used
     int missed = 0;     // pings without a pong
+    uint32_t since = 0; // connected at (millis)
 };
 
 std::mutex screenMutex;   // the game's canvas, drawn by the game thread
@@ -96,6 +100,8 @@ uint8_t pageLang = 0;
 bool langDirty = false;
 std::string symbolsJs = "const SYM=[];";
 std::atomic<int> clients(0);
+std::atomic<int> pageThreads(0);
+std::atomic<bool> serving(true);  // false while this device is mission control (stopServer)
 bool started = false;
 
 // Network thread only
@@ -138,7 +144,8 @@ bool sendAll(int fd, const void *data, size_t len) {
     return true;
 }
 
-// ---- HTTP: the page and /sym.js, one request per connection
+// ---- HTTP: the page and /sym.js, one request per connection, own thread
+// (a slow browser must not hold the stream of the others)
 
 void serveHttp(int fd) {
     timeval tv = {2, 0};
@@ -182,6 +189,7 @@ void serveHttp(int fd) {
     sendAll(fd, head.data(), head.size());
     sendAll(fd, body.data(), body.size());
     close(fd);
+    pageThreads--;
 }
 
 // ---- WebSocket
@@ -444,6 +452,23 @@ void *netThread(void *) {
     int wsFd = listenOn(WS_PORT);
     uint32_t nextFrame = 0, nextClock = 0, nextPing = 0;
     for (;;) {
+        if (!serving) {  // mission control: not a crew, browsers and searches find nothing here
+            for (Client &c : conns) {
+                if (c.fd >= 0) {
+                    dropClient(c);
+                }
+            }
+            if (httpFd >= 0) {
+                close(httpFd);
+                httpFd = -1;
+            }
+            if (wsFd >= 0) {
+                close(wsFd);
+                wsFd = -1;
+            }
+            usleep(20000);
+            continue;
+        }
         fd_set rd;
         FD_ZERO(&rd);
         int maxFd = -1;
@@ -464,7 +489,12 @@ void *netThread(void *) {
             if (httpFd >= 0 && FD_ISSET(httpFd, &rd)) {
                 int fd = accept(httpFd, nullptr, nullptr);
                 if (fd >= 0) {
-                    serveHttp(fd);
+                    if (pageThreads >= MAX_PAGE_THREADS) {
+                        close(fd);
+                    } else {
+                        pageThreads++;
+                        std::thread(serveHttp, fd).detach();
+                    }
                 }
             }
             if (wsFd >= 0 && FD_ISSET(wsFd, &rd)) {
@@ -482,6 +512,7 @@ void *netThread(void *) {
                         timeval st = {3, 0};
                         setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &st, sizeof st);
                         slot->fd = fd;
+                        slot->since = millis();
                     }
                 }
             }
@@ -503,6 +534,11 @@ void *netThread(void *) {
             }
         }
         uint32_t now = millis();
+        for (Client &c : conns) {
+            if (c.fd >= 0 && !c.open && now - c.since > HANDSHAKE_MS) {
+                dropClient(c);  // connected but silent: its place goes to the next browser
+            }
+        }
         if (clients == 0) {
             std::lock_guard<std::mutex> g(stateLock);
             soundMsgs.clear();  // nobody to play them
@@ -567,6 +603,7 @@ bool startServer(const uint16_t *screen, int w, int h) {
     screenBuf = screen;
     screenW = w;
     screenH = std::min(h, MAX_H);
+    serving = true;  // the ports open again within 0.5 s if they were closed
     if (!started) {
         started = true;
         pthread_t t;
@@ -574,6 +611,11 @@ bool startServer(const uint16_t *screen, int w, int h) {
         pthread_detach(t);
     }
     return true;
+}
+
+// No server while this device is mission control (bridge.inc, controle::start)
+void stopServer() {
+    serving = false;
 }
 
 int clientCount() {

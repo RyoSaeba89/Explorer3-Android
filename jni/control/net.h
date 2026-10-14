@@ -1,10 +1,10 @@
-/* Mission control on Android: the connection to the crew, and the search
- * for the crew on the local network (user's choice: automatic search, typed
- * address as a fallback).
+/* Mission control (Explorer3-Android's, unchanged): the connection to the
+ * crew, and the search for the crew on the local network (automatic search,
+ * typed address as a fallback).
  *
- * The crew is a Cardputer (stream on port 81, page on 80) or an Android
- * device running this app (8081 and 8080: Android forbids ports below 1024
- * without root). */
+ * The crew is a Cardputer or a Pi (stream on port 81, page on 80) or an
+ * Android device (8081 and 8080: Android forbids ports below 1024 without
+ * root). */
 #ifndef NET_H
 #define NET_H
 #include <stdbool.h>

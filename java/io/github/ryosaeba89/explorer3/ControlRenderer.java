@@ -8,13 +8,13 @@ import javax.microedition.khronos.opengles.GL10;
 
 /**
  * Mission control's frames: everything is drawn natively (jni/control/gl_draw.c),
- * then the transparent back and quit buttons when there is no gamepad.
+ * then the transparent back and quit buttons while the finger is used.
  */
 final class ControlRenderer implements GLSurfaceView.Renderer {
     private static final int CANVAS_W = 960, CANVAS_H = 540;  // jni/control/draw.h
 
     private final Handler activity;
-    private final TouchButtons buttons;  // null with a gamepad
+    private final TouchButtons buttons;  // shown while the finger is used
     private int width, height;
 
     ControlRenderer(Handler activity, TouchButtons buttons) {
@@ -53,8 +53,6 @@ final class ControlRenderer implements GLSurfaceView.Renderer {
         if (Control.addressRequested()) {
             activity.sendEmptyMessage(Control.MSG_ADDRESS);
         }
-        if (buttons != null) {
-            buttons.draw(TouchButtons.BACK | TouchButtons.QUIT);
-        }
+        buttons.draw(Device.style() == Device.TOUCH ? TouchButtons.BACK | TouchButtons.QUIT : 0);
     }
 }

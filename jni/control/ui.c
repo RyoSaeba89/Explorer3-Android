@@ -157,30 +157,72 @@ static int tap_of(int b)
     }
 }
 
+/* Keyboard keys, by language (0 French, 1 English) */
+static const char *key_name(int b, int lang)
+{
+    switch (b) {
+    case B_OK:   return lang ? "Enter" : "Entrée";
+    case B_BACK: return lang ? "Esc" : "Échap";
+    case B_KB:   return "Tab";
+    default:     return "-  +";   /* B_LR: -10, +10 */
+    }
+}
+
+/* L and R of each gamepad */
+static const char *lr_name(int pad)
+{
+    switch (pad) {
+    case PAD_XPERIA: return "L R";
+    case PAD_XBOX:   return "LB RB";
+    default:         return "L1 R1";   /* OUYA, PlayStation */
+    }
+}
+
+/* A key of the keyboard, or L / R of a gamepad: a light key with its name */
+static float keycap(float x, float y, const char *name)
+{
+    float w = text_width(1.25f, name) + 12;
+    draw_fill(x, y + 2, w, ICON - 4, rgb(C_DIM));
+    draw_text(x + 6, y + 3, 1.25f, rgb(C_BG), 1, name);
+    return w;
+}
+
+/* Width of a button's picture */
+static float button_width(int b, int pad, int lang)
+{
+    if (b == B_DPAD)
+        return ICON;
+    if (pad == PAD_KEYBOARD)
+        return text_width(1.25f, key_name(b, lang)) + 12;
+    if (b == B_LR)
+        return text_width(1.25f, lr_name(pad)) + 12;
+    return ICON;
+}
+
 /* Draws a button's picture at (x, y), top-left; returns its width. */
-static float button(float x, float y, int b, bool ouya)
+static float button(float x, float y, int b, int pad, int lang)
 {
     float cx = x + ICON / 2, cy = y + ICON / 2;
-    if (b == B_DPAD) {
+    if (b == B_DPAD) {   /* the arrows, or the gamepad's cross */
         draw_fill(cx - 4, y + 1, 8, ICON - 2, rgb(C_TEXT));
         draw_fill(x + 1, cy - 4, ICON - 2, 8, rgb(C_TEXT));
         return ICON;
     }
-    if (b == B_LR) {
-        const char *s = ouya ? "L1 R1" : "L R";
-        float w = text_width(1.25f, s) + 12;
-        draw_fill(x, y + 2, w, ICON - 4, rgb(C_DIM));
-        draw_text(x + 6, y + 3, 1.25f, rgb(C_BG), 1, s);
-        return w;
-    }
-    if (ouya) {
-        static const uint32_t col[3] = {0x3bb54a, 0xe0393e, 0xf6c40f};
-        static const char *const let[3] = {"O", "A", "Y"};
-        draw_disc(cx, cy, ICON / 2, rgb(col[b]));
-        draw_text(cx - GLYPH_W * 1.25f / 2, cy - GLYPH_H * 1.25f / 2, 1.25f, rgb(0x000000), 1, let[b]);
+    if (pad == PAD_KEYBOARD)
+        return keycap(x, y, key_name(b, lang));
+    if (b == B_LR)
+        return keycap(x, y, lr_name(pad));
+    if (pad == PAD_OUYA || pad == PAD_XBOX) {   /* letters on coloured discs */
+        static const uint32_t ouya[3] = {0x3bb54a, 0xe0393e, 0xf6c40f};
+        static const uint32_t xbox[3] = {0x5cb85c, 0xe0393e, 0xf6c40f};
+        static const char *const ouya_let[3] = {"O", "A", "Y"};
+        static const char *const xbox_let[3] = {"A", "B", "Y"};
+        draw_disc(cx, cy, ICON / 2, rgb(pad == PAD_OUYA ? ouya[b] : xbox[b]));
+        draw_text(cx - GLYPH_W * 1.25f / 2, cy - GLYPH_H * 1.25f / 2, 1.25f, rgb(0x000000), 1,
+                  pad == PAD_OUYA ? ouya_let[b] : xbox_let[b]);
         return ICON;
     }
-    draw_disc(cx, cy, ICON / 2, rgb(0x1e1e24));
+    draw_disc(cx, cy, ICON / 2, rgb(0x1e1e24));   /* Xperia Play, PlayStation: cross, circle, triangle */
     if (b == B_OK) {
         draw_curve(cx - 7, cy - 7, cx, cy, cx + 7, cy + 7, 3, rgb(0x7ca8e8));
         draw_curve(cx + 7, cy - 7, cx, cy, cx - 7, cy + 7, 3, rgb(0x7ca8e8));
@@ -215,14 +257,13 @@ static void hints(const ui_t *u, const hint_t *h, int n)
 {
     const float gap = 40, inner = 10;
     bool words = u->pad == PAD_TOUCH;
-    bool ouya = u->pad == PAD_OUYA;
     float total = 0;
     int shown = 0;
     for (int i = 0; i < n; i++) {
         if (!shown_hint(u, h[i].button))
             continue;
         float tw = text_width(S_BODY, t(h[i].text, u->lang));
-        float bw = h[i].button == B_LR ? text_width(1.25f, ouya ? "L1 R1" : "L R") + 12 : ICON;
+        float bw = button_width(h[i].button, u->pad, u->lang);
         total += (words ? tw + 2 * WORD_PAD : bw + inner + tw) + (shown++ ? gap : 0);
     }
     float x = CX - total / 2, y = CANVAS_H - 60;
@@ -242,7 +283,7 @@ static void hints(const ui_t *u, const hint_t *h, int n)
             x += w + gap;
         } else {
             float x0 = x;
-            x += button(x, y, h[i].button, ouya) + inner;
+            x += button(x, y, h[i].button, u->pad, u->lang) + inner;
             draw_text(x, ty, S_BODY, rgb(C_DIM), 0, s);
             x += tw;
             tap_area(x0, y, x - x0, ICON, tap_of(h[i].button), 0);
@@ -444,7 +485,7 @@ void ui_overlay(int lang, bool reconnecting, bool old_game)
 void ui_stream_hint(int lang, int pad)
 {
     bool words = pad == PAD_TOUCH;   /* no picture: the words, to tap */
-    float w = (words ? 0 : ICON + 10) + text_width(S_BODY, t(T_K_LEAVE, lang)) + 24;
+    float w = (words ? 0 : button_width(B_BACK, pad, lang) + 10) + text_width(S_BODY, t(T_K_LEAVE, lang)) + 24;
     float x = CANVAS_W - w - 8, y = CANVAS_H - ICON - 22;
     draw_fill(x, y, w, ICON + 14, (rgba_t){6, 6, 26, 220});
     if (words)
@@ -452,7 +493,7 @@ void ui_stream_hint(int lang, int pad)
     tap_area(x, y, w, ICON + 14, TAP_BACK, 0);
     x += 12;
     if (!words)
-        x += button(x, y + 7, B_BACK, pad == PAD_OUYA) + 10;
+        x += button(x, y + 7, B_BACK, pad, lang) + 10;
     draw_text(x, y + 7 + (ICON - GLYPH_H * S_BODY) / 2, S_BODY, rgb(words ? C_TEXT : C_DIM), 0,
               t(T_K_LEAVE, lang));
 }

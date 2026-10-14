@@ -22,6 +22,7 @@ enum Code {
     KEY_DEL,
     KEY_TAB,
     KEY_SPACE,
+    KEY_CTRL,  // Fn: the game master's pause, pressed 3 times
     // From 33 on: a printable character of a plugged-in keyboard
 };
 

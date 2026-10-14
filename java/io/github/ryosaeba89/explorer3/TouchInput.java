@@ -13,7 +13,7 @@ import android.view.ViewConfiguration;
  */
 final class TouchInput {
     private final TouchTarget target;
-    private final TouchButtons buttons;  // null with a gamepad
+    private final TouchButtons buttons;  // hit only where drawn (while the finger is used)
     private final float slop;
     private float downX, downY;
     private int downButton;

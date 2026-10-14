@@ -24,6 +24,7 @@
 #include <time.h>
 
 #include "addr.h"
+#include "banner.h"
 #include "draw.h"
 #include "gl_draw.h"
 #include "net.h"
@@ -42,6 +43,18 @@ enum { ST_NO_NETWORK, ST_SEARCH, ST_NONE, ST_LIST, ST_ADDRESS, ST_PROBE, ST_CONN
 
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;   /* everything below */
 static session_t ses;
+static banner_t banner;   /* the end screen's banner (message B) */
+static sound_t  sound;    /* notes and rumble (T, S, R); goes on from one connection to the next */
+
+/* Messages B, T, S, R of the session: the banner and the sound */
+static void media(void *ctx, const msg_t *m, const clocksync_t *clk, uint32_t now)
+{
+    (void)ctx;
+    if (m->kind == 'B')
+        banner_update(&banner, m, now);
+    else
+        sound_message(&sound, m, clk);
+}
 static ui_t ui;
 static struct {
     bool    has_ip;
@@ -180,6 +193,7 @@ static bool begin_session(uint32_t now)
     addr_format(ui.target, host);
     nonce16(nonce);
     int n = session_begin(&ses, now, host, (unsigned)targetPort, nonce, req, sizeof(req));
+    banner_init(&banner);   /* the crew sends its banner again */
     if (n < 0 || link_write(req, n) < 0) {
         link_close();
         return false;
@@ -364,6 +378,7 @@ static void step(uint32_t now)
             if (n > 0) {
                 connect_to(f[0].ip, f[0].port, now);
             } else {
+                targetPort = 0;   /* port unknown: trying again probes again */
                 ui.reason = NET_REASON_UNREACHABLE;
                 state = ST_ERROR;
             }
@@ -401,9 +416,13 @@ static void step(uint32_t now)
     }
 
     case ST_ERROR:
-        if (down(BTN_OK))
+        if (down(BTN_OK) && targetPort) {
             connect_to(ui.target, targetPort, now);
-        else if (down(BTN_BACK))
+        } else if (down(BTN_OK)) {
+            finder_start(ui.self, ui.target);
+            ui.since = now;
+            state = ST_PROBE;
+        } else if (down(BTN_BACK))
             start_search(now);
         break;
 
@@ -481,7 +500,7 @@ static void draw(uint32_t now)
                 changed |= ses.dirty.bits[i] != 0;
             gl_screen(ses.screen, changed);
             memset(&ses.dirty, 0, sizeof(ses.dirty));
-            banner_draw(&ses.banner, now);
+            banner_draw(&banner, now);
         }
         ui_overlay(ses.lang, !linked || ses.state == SES_HANDSHAKE, ses.bad_panels > 0);
         if ((int32_t)(now - streamSince) < HINT_MS)
@@ -507,7 +526,7 @@ static void draw(uint32_t now)
 #define JNI_FN(ret, name) JNIEXPORT ret JNICALL Java_io_github_ryosaeba89_explorer3_Control_##name
 
 /* Once per process: settings file, language before the crew's (0 French,
- * 1 English), buttons the hints show (PAD_..., Device.BUTTONS). */
+ * 1 English), buttons the hints show (PAD_..., the device used last). */
 JNI_FN(void, start)(JNIEnv *env, jclass cls, jstring path, jint lang, jint pad)
 {
     (void)cls;
@@ -520,7 +539,9 @@ JNI_FN(void, start)(JNIEnv *env, jclass cls, jstring path, jint lang, jint pad)
         (*env)->ReleaseStringUTFChars(env, path, p);
         cfg.lang = lang;
         cfg_load();
-        session_init(&ses);
+        session_init(&ses, media, NULL);
+        banner_init(&banner);
+        sound_init(&sound);
         ses.lang = cfg.lang;   /* until the first L message */
         memset(&ui, 0, sizeof(ui));
         ui.pad = pad;
@@ -529,6 +550,24 @@ JNI_FN(void, start)(JNIEnv *env, jclass cls, jstring path, jint lang, jint pad)
     if (!ses.lang_known)
         ses.lang = lang;   /* the game's language, until the crew sends its own */
     quitRequested = false;
+    pressed = held = 0;
+    /* each opening starts afresh, as on the Pi: a stream left by Start + Select
+     * is closed, a list or "no crew" from last time is searched again */
+    leave_stream();
+    if (netKnown)
+        start_search(now_ms());
+    else
+        state = ST_NO_NETWORK;
+    pthread_mutex_unlock(&lock);
+}
+
+/* The device used last (PAD_..., Device.java): the hints show its buttons */
+JNI_FN(void, setButtons)(JNIEnv *env, jclass cls, jint pad)
+{
+    (void)env;
+    (void)cls;
+    pthread_mutex_lock(&lock);
+    ui.pad = pad;
     pthread_mutex_unlock(&lock);
 }
 
@@ -643,6 +682,10 @@ JNI_FN(jboolean, frame)(JNIEnv *env, jclass cls, jint w, jint h)
     gl_end();
     bool quit = quitRequested;
     quitRequested = false;
+    if (quit) {
+        leave_stream();
+        state = ST_NO_NETWORK;
+    }
     pthread_mutex_unlock(&lock);
     return !quit;
 }
@@ -656,11 +699,11 @@ JNI_FN(void, mix)(JNIEnv *env, jclass cls, jshortArray out, jint latencyMs)
     jshort *dst = (*env)->GetShortArrayElements(env, out, NULL);
     pthread_mutex_lock(&lock);
     if (!audioAnchored || latencyMs != audioLatencyMs) {
-        sound_anchor(&ses.sound, now_ms() + (uint32_t)latencyMs);   /* this block sounds then */
+        sound_anchor(&sound, now_ms() + (uint32_t)latencyMs);   /* this block sounds then */
         audioAnchored = true;
         audioLatencyMs = latencyMs;
     }
-    sound_render(&ses.sound, dst, n / 2);
+    sound_render(&sound, dst, n / 2);
     pthread_mutex_unlock(&lock);
     (*env)->ReleaseShortArrayElements(env, out, dst, 0);
 }

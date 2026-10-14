@@ -32,19 +32,24 @@ fi
 win() { cygpath -m "$1" 2>/dev/null || echo "$1"; }
 
 echo "== Android texts"
-# One copy of the game sources per device: Android texts with that device's
-# buttons, and the read-only bridge appended to main.cpp (main.cpp includes
-# "textes.h" from its own folder).
-#   device  confirm back keyboard left  help pause
-#   xperia  ×       ○    △        □     L    R
-#   ouya    O       A    Y        U     L1   R1
-#   touch   (no gamepad: texts for the finger, tools/touch-texts.sed)
-# Another device with a gamepad plugged in at start uses the xperia copy
-# (PlayStation symbols), see Device.java.
+# One copy of the game sources (main.cpp includes "textes.h" from its own
+# folder), with the read-only bridge appended to main.cpp, and the game's
+# texts in six versions; tr() gives the one of the device used last
+# (padText() in bridge.inc, user's choice E1.1), any of them at any time:
+#   style     namespace      confirm back keyboard left help pause
+#   keyboard  textes         the Cardputer's key names, Ctrl for Fn
+#   xperia    textes_xperia  ×       ○    △        □    L    R
+#   ouya      textes_ouya    O       A    Y        U    L1   R1
+#   ps        textes_ps      ×       ○    △        □    L1   Options
+#   xbox      textes_xbox    A       B    Y        X    LB   Start
+#   touch     textes_touch   (texts for the finger, tools/touch-texts.sed)
+# A gamepad other than the Xperia Play's and the OUYA's: PlayStation or Xbox
+# names depending on its maker (Device.java, user's choice E2.2).
 # Touch (bridge.inc) knows where the game draws what it can be tapped on:
 # stop if one of those has moved in a newer version of the game.
 for drawn in 'drawChoices(names, infos, 2, langSel, 32, 32, 8);' \
              'drawChoices(names, infos, 3, modeSel, 31, 28, 2);' \
+             'drawChoices(names, infos, 2, roleSel, 26, 38, 6);' \
              'canvas.fillRoundRect(16, y, W - 32, h, 5,' \
              'drawLamp(186, 74, lampOn(now));' 'drawSpeaker(186, 74, morsePlaying);' \
              'canvas.fillRoundRect(cx - 32, cy - 32, 64, 64, 6, C_PANEL2);' \
@@ -56,40 +61,74 @@ for drawn in 'drawChoices(names, infos, 2, langSel, 32, 32, 8);' \
              'canvas.fillRoundRect(x, y, 46, 32, 3, C_PANEL2);'; do
     grep -qF "$drawn" "$GAME/src/main.cpp" || { echo "main.cpp no longer draws: $drawn (touch, see jni/bridge.inc)"; exit 1; }
 done
-copy_game() {  # copy_game <folder> <sed buttons> [touch texts]
-    dst=$1
+SRC_GAME=$NDK_OUT/game
+dst=$SRC_GAME
+mkdir -p "$dst"
+sed -f "$HERE/tools/android-game.sed" "$GAME/src/main.cpp" | cat - "$HERE/jni/bridge.inc" > "$dst/main.cpp.new"
+grep -q 'clientCount() > 0) hint(tr(ADDR_CONTINUE)' "$dst/main.cpp.new" || { echo "tools/android-game.sed no longer applies to main.cpp"; exit 1; }
+grep -q 'return padText(t, lang);' "$dst/main.cpp.new" || { echo "tools/android-game.sed no longer applies (tr)"; exit 1; }
+grep -q 'return tr(multiMode ? multi : solo);' "$dst/main.cpp.new" || { echo "tools/android-game.sed no longer applies (trm)"; exit 1; }
+grep -q '^#include "controle.h"$' "$dst/main.cpp.new" || { echo "the game no longer includes controle.h (mission control role)"; exit 1; }
+if grep -q 'controle/\|textes_controle' "$dst/main.cpp.new"; then
+    echo "tools/android-game.sed no longer applies (the game's own mission control)"
+    exit 1
+fi
+# The keyboard's texts: the Cardputer's key names (a plugged-in keyboard has
+# them), Ctrl pressed 3 times for the game master's pause (Fn)
+sed 's/"Fn Fn Fn : reprendre", "Fn Fn Fn: resume"/"Ctrl Ctrl Ctrl : reprendre", "Ctrl Ctrl Ctrl: resume"/' "$GAME/src/textes.h" > "$dst/textes.h.new"
+grep -q '"Ctrl Ctrl Ctrl : reprendre"' "$dst/textes.h.new" || { echo "textes.h: the pause text changed (tools/build.sh)"; exit 1; }
+version() {  # version <namespace> <sed buttons> [touch texts]
     touch_texts=${3:-/dev/null}  # an empty sed script changes nothing
-    mkdir -p "$dst"
-    sed -f "$HERE/tools/android-game.sed" "$GAME/src/main.cpp" | cat - "$HERE/jni/bridge.inc" > "$dst/main.cpp.new"
-    grep -q 'clientCount() > 0) hint(tr(ADDR_CONTINUE)' "$dst/main.cpp.new"         || { echo "tools/android-game.sed no longer applies to main.cpp"; exit 1; }
-    sed -f "$HERE/tools/android-texts.sed" "$GAME/src/textes.h" | sed -f "$touch_texts" | sed "$2" > "$dst/textes.h.new"
-    # Start-up codes and maze pictures (game data, no button names)
-    cp "$GAME/src/mots.h" "$dst/mots.h.new"
-    cp "$GAME/src/dessins.h" "$dst/dessins.h.new"
-    # No explorer3.local on Android (no name announced on the network)
-    sed 's/HOST_NAME = "explorer3.local"/HOST_NAME = ""/' "$GAME/src/diffusion.h" > "$dst/diffusion.h.new"
-    awk '/const char PAGE\[\] PROGMEM = R"rawliteral\(/{f=1} f{print} /\)rawliteral";/{f=0}' "$GAME/src/diffusion.cpp"         | sed -f "$HERE/tools/android-page.sed" | sed -f "$touch_texts" | sed "$2" > "$dst/page.inc.new"
-    if ! grep -q "':8081/'" "$dst/page.inc.new" || grep -E "(cx|[a-z]{2}):'[^']*Cardputer" "$dst/page.inc.new"; then
-        echo "tools/android-page.sed no longer applies to the page of diffusion.cpp"
-        exit 1
-    fi
-    # No displayed text may contain "Cardputer" or a Cardputer key name, nor a
-    # placeholder left over (comments may)
-    texts=$(sed 's#//.*##' "$dst/textes.h.new" "$dst/main.cpp.new" "$dst/mots.h.new" | grep '"' || true)
-    if echo "$texts" | grep -i 'cardputer' || echo "$texts" | grep -E 'ENTRÉE|ENTER|ESC|ESPACE|SPACE|TAB|DEL|Fn Fn|@[A-Z]+@'; then
-        echo "text to adapt for Android: extend tools/android-texts.sed (and tools/touch-texts.sed)"
-        exit 1
-    fi
-    for f in main.cpp textes.h mots.h dessins.h diffusion.h page.inc; do  # unchanged files keep their date: no rebuild
-        if cmp -s "$dst/$f.new" "$dst/$f"; then rm "$dst/$f.new"; else mv "$dst/$f.new" "$dst/$f"; fi
-    done
+    sed -f "$HERE/tools/android-texts.sed" "$GAME/src/textes.h" | sed -f "$touch_texts" | sed "$2" |
+        sed "s/^namespace textes {/namespace $1 {/; s/^}  \/\/ namespace textes$/}  \/\/ namespace $1/" > "$dst/$1.h.new"
+    grep -q "^namespace $1 {" "$dst/$1.h.new" || { echo "textes.h: namespace not found"; exit 1; }
 }
-SRC_XPERIA=$NDK_OUT/game-xperia
-SRC_OUYA=$NDK_OUT/game-ouya
-SRC_TOUCH=$NDK_OUT/game-touch
-copy_game "$SRC_XPERIA" 's/@OK@/×/g; s/@BACK@/○/g; s/@KB@/△/g; s/@SQ@/□/g; s/@L@/L/g; s/@R@/R/g'
-copy_game "$SRC_OUYA" 's/@OK@/O/g; s/@BACK@/A/g; s/@KB@/Y/g; s/@SQ@/U/g; s/@L@/L1/g; s/@R@/R1/g'
-copy_game "$SRC_TOUCH" '' "$HERE/tools/touch-texts.sed"
+version textes_xperia 's/@OK@/×/g; s/@BACK@/○/g; s/@KB@/△/g; s/@SQ@/□/g; s/@L@/L/g; s/@R@/R/g'
+version textes_ouya 's/@OK@/O/g; s/@BACK@/A/g; s/@KB@/Y/g; s/@SQ@/U/g; s/@L@/L1/g; s/@R@/R1/g'
+version textes_ps 's/@OK@/×/g; s/@BACK@/○/g; s/@KB@/△/g; s/@SQ@/□/g; s/@L@/L1/g; s/@R@/Options/g'
+version textes_xbox 's/@OK@/A/g; s/@BACK@/B/g; s/@KB@/Y/g; s/@SQ@/X/g; s/@L@/LB/g; s/@R@/Start/g'
+version textes_touch '' "$HERE/tools/touch-texts.sed"
+# The texts side by side: every "constexpr Tx NAME" and "constexpr Tx NAME[n]"
+# (the order of the versions is that of labels::Style, jni/labels.h)
+awk '
+/^constexpr Tx [A-Z0-9_]+\[/ {
+    name = $3; sub(/\[.*/, "", name)
+    printf "for (size_t i = 0; i < sizeof(textes::%s) / sizeof(textes::%s[0]); i++) add(textes::%s[i], textes_xperia::%s[i], textes_ouya::%s[i], textes_ps::%s[i], textes_xbox::%s[i], textes_touch::%s[i]);\n", name, name, name, name, name, name, name, name
+    next
+}
+/^constexpr Tx [A-Z0-9_]+ =/ {
+    printf "add(textes::%s, textes_xperia::%s, textes_ouya::%s, textes_ps::%s, textes_xbox::%s, textes_touch::%s);\n", $3, $3, $3, $3, $3, $3
+}' "$dst/textes.h.new" > "$dst/texts_table.inc.new"
+[ "$(wc -l < "$dst/texts_table.inc.new")" -gt 50 ] || { echo "texts_table.inc: too few texts found in textes.h"; exit 1; }
+# Start-up codes and maze pictures (game data, no button names)
+cp "$GAME/src/mots.h" "$dst/mots.h.new"
+cp "$GAME/src/dessins.h" "$dst/dessins.h.new"
+# No explorer3.local on Android (no name announced on the network)
+sed 's/HOST_NAME = "explorer3.local"/HOST_NAME = ""/' "$GAME/src/diffusion.h" > "$dst/diffusion.h.new"
+awk '/const char PAGE\[\] PROGMEM = R"rawliteral\(/{f=1} f{print} /\)rawliteral";/{f=0}' "$GAME/src/diffusion.cpp" \
+    | sed -f "$HERE/tools/android-page.sed" > "$dst/page.inc.new"
+if ! grep -q "':8081/'" "$dst/page.inc.new" || grep -E "(cx|[a-z]{2}):'[^']*Cardputer" "$dst/page.inc.new" \
+    || ! grep -q 'lance la partie' "$dst/page.inc.new"; then
+    echo "tools/android-page.sed no longer applies to the page of diffusion.cpp"
+    exit 1
+fi
+# No displayed text may contain "Cardputer", nor a placeholder left over;
+# on a gamepad or for the finger, nor a Cardputer key name (comments may)
+quoted() {
+    sed 's#//.*##' "$@" | grep '"' || true
+}
+if quoted "$dst/textes.h.new" "$dst/main.cpp.new" "$dst/mots.h.new" | grep -iE 'cardputer|@[A-Z]+@'; then
+    echo "text to adapt for Android: extend tools/android-texts.sed"
+    exit 1
+fi
+if quoted "$dst"/textes_*.h.new | grep -E 'ENTRÉE|ENTER|ESC|ESPACE|SPACE|TAB|DEL|Fn Fn|Ctrl|@[A-Z]+@'; then
+    echo "text to adapt for a gamepad or the finger: extend tools/android-texts.sed (and tools/touch-texts.sed)"
+    exit 1
+fi
+for f in main.cpp textes.h textes_xperia.h textes_ouya.h textes_ps.h textes_xbox.h textes_touch.h texts_table.inc \
+         mots.h dessins.h diffusion.h page.inc; do  # unchanged files keep their date: no rebuild
+    if cmp -s "$dst/$f.new" "$dst/$f"; then rm "$dst/$f.new"; else mv "$dst/$f.new" "$dst/$f"; fi
+done
 
 echo "== mission control data"
 # Mission control's texts and pictures come from the game itself, so they
@@ -121,8 +160,8 @@ done
 echo "== native ($ABIS)"
 cd "$HERE"
 rm -rf libs
-cmd //c "$(cygpath -w "$NDK/ndk-build.cmd") -j8 NDK_MIN_PLATFORM_LEVEL=9 NDK_OUT=$(win "$NDK_OUT") ABIS=$ABIS GAME_DIR=$(win "$GAME") SRC_XPERIA=$(win "$SRC_XPERIA") SRC_OUYA=$(win "$SRC_OUYA") SRC_TOUCH=$(win "$SRC_TOUCH") CONTROL_GEN=$(win "$CTRL")"     | grep -v "Compile" || true
-for lib in explorer3_xperia explorer3_ouya explorer3_touch explorer3_control; do
+cmd //c "$(cygpath -w "$NDK/ndk-build.cmd") -j8 NDK_MIN_PLATFORM_LEVEL=9 NDK_OUT=$(win "$NDK_OUT") ABIS=$ABIS GAME_DIR=$(win "$GAME") SRC_GAME=$(win "$SRC_GAME") CONTROL_GEN=$(win "$CTRL")"     | grep -v "Compile" || true
+for lib in explorer3 explorer3_control; do
     [ -f libs/armeabi-v7a/lib$lib.so ] || { echo "native build failed"; exit 1; }
 done
 

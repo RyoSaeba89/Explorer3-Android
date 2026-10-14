@@ -21,7 +21,6 @@
 #include "bridge.h"
 #include "display.h"
 #include "onscreen_keyboard.h"
-#include "role_menu.h"
 
 namespace {
 
@@ -108,59 +107,11 @@ bool keyboardButton(int code) {
     }
 }
 
-void click() {
-    M5Cardputer.Speaker.tone(1200, 25, 1, true);  // the game's sfxClick()
-}
-
-// The role menu (after "Multiplayer") takes every button while it is open
-bool roleButton(int code) {
-    if (!role::isOpen()) {
-        if ((code == input::CONFIRM || code == input::KEY_ENTER) && bridge::multiplayerSelected()) {
-            role::open();
-            click();
-            return true;
-        }
-        return false;
-    }
-    switch (code) {
-        case input::UP: role::move(-1); click(); break;
-        case input::DOWN: role::move(1); click(); break;
-        case input::CONFIRM:
-        case input::KEY_ENTER:
-            role::close();
-            if (role::selected() == role::CREW) {
-                presses.push_back(special(&KeysState::enter));  // the game goes on into Multiplayer
-            } else {
-                click();
-                role::requestControl();
-            }
-            break;
-        case input::BACK:
-        case input::KEY_ESC:
-            role::close();
-            click();
-            break;
-        default:
-            break;
-    }
-    return true;
-}
-
 void handle(int code);
 
-// A tap: on the role menu or the on-screen keyboard, the choice or key
-// touched; elsewhere what the game's screen makes of it (bridge::tap)
+// A tap: on the on-screen keyboard, the key touched; elsewhere what the
+// game's screen makes of it (bridge::tap)
 void handleTap(int x, int y) {
-    if (role::isOpen()) {
-        int i = role::choiceAt(x, y);
-        if (i >= 0) {
-            if (i != role::selected()) {
-                role::move(1);
-            }
-            handle(input::CONFIRM);
-        }
-        return;
-    }
     if (osk::isOpen()) {
         if (osk::selectAt(x, y)) {
             handle(input::CONFIRM);
@@ -192,7 +143,7 @@ void handle(int code) {
         handleTap(code & 0xff, (code >> 8) & 0xff);
         return;
     }
-    if (roleButton(code) || keyboardButton(code)) {
+    if (keyboardButton(code)) {
         return;
     }
     switch (code) {
@@ -225,6 +176,7 @@ void handle(int code) {
             presses.push_back(special(&KeysState::tab));
             break;
         case input::KEY_DEL: presses.push_back(special(&KeysState::del)); break;
+        case input::KEY_CTRL: presses.push_back(special(&KeysState::fn)); break;
         case input::PAUSE:
             // The game pauses after Fn pressed 3 times within 800 ms each
             for (int i = 0; i < 3; i++) {
@@ -302,9 +254,6 @@ void Keyboard_Class::updateKeysState() {
         applyTap(code);
     }
     unsigned b = bridge::touchButtons();
-    if (role::isOpen()) {
-        b = (b & ~input::TB_QUIT) | input::TB_BACK;
-    }
     if (osk::isOpen()) {
         b |= input::TB_BACK;
     }

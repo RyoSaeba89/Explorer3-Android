@@ -14,6 +14,8 @@
 constexpr Tx LANG_FOOTER = {"Toucher / Tap : choisir / select", "Toucher / Tap : choisir / select"};
 /^constexpr Tx MODE_FOOTER = /c\
 constexpr Tx MODE_FOOTER = {"Toucher : choisir", "Tap: choose"};
+/^constexpr Tx ROLE_FOOTER = /c\
+constexpr Tx ROLE_FOOTER = {"Toucher : choisir|← : retour", "Tap: choose|←: back"};
 /^constexpr Tx WIFI_REFRESH = /c\
 constexpr Tx WIFI_REFRESH = {"Actualiser", "Refresh"};
 /^constexpr Tx WIFI_SCAN_FAILED = /c\
